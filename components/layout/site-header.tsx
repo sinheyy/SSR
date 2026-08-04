@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/auth/logout-button";
@@ -11,14 +10,8 @@ export default async function SiteHeader() {
 
   return (
     <header className="flex items-center justify-between border-b border-black/[.08] px-8 py-4 dark:border-white/[.145]">
-      <Link href="/" className="relative h-8 w-32">
-        <Image
-          src="/assets/logo.png"
-          alt="SKALA STUDY ROOM"
-          fill
-          className="object-contain object-left"
-          priority
-        />
+      <Link href="/" className="font-semibold text-black dark:text-zinc-50">
+        홈
       </Link>
       <nav className="flex items-center gap-4">
         {user ? (
