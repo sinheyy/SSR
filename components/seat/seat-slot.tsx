@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useTransition } from "react";
 import { leaveSeat, sitAtSeat } from "@/components/seat/actions";
 import type { SeatData } from "@/components/seat/types";
 
@@ -12,27 +12,12 @@ const AVATAR_COLORS = [
   "bg-violet-300 dark:bg-violet-800/70",
 ];
 
-function useElapsedTime(since: string | null) {
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-  useEffect(() => {
-    if (!since) return;
-    const sinceMs = new Date(since).getTime();
-    const tick = () =>
-      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - sinceMs) / 1000)));
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [since]);
-
-  const hours = Math.floor(elapsedSeconds / 3600);
-  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-  const seconds = elapsedSeconds % 60;
-  const pad = (n: number) => n.toString().padStart(2, "0");
-
-  return hours > 0
-    ? `${hours}:${pad(minutes)}:${pad(seconds)}`
-    : `${pad(minutes)}:${pad(seconds)}`;
+function colorForUser(userId: string) {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) | 0;
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
 export default function SeatSlot({
@@ -44,7 +29,6 @@ export default function SeatSlot({
 }) {
   const [isPending, startTransition] = useTransition();
   const isMine = seat.occupant?.userId === currentUserId;
-  const elapsed = useElapsedTime(seat.occupant?.sittingSince ?? null);
 
   function handleClick() {
     if (isPending) return;
@@ -71,28 +55,21 @@ export default function SeatSlot({
     );
   }
 
-  const colorClass = AVATAR_COLORS[seat.position % AVATAR_COLORS.length];
+  const colorClass = colorForUser(seat.occupant.userId);
 
   return (
-    <div className="relative">
-      {isMine && (
-        <span className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-[#5a4a34] dark:text-[#c9b28c]">
-          {elapsed}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={isMine ? handleClick : undefined}
-        disabled={isPending || !isMine}
-        className={`flex size-7 items-center justify-center gap-1 rounded-md shadow-sm ${colorClass} ${
-          isMine ? "ring-2 ring-emerald-500" : ""
-        } disabled:opacity-90`}
-        aria-label={`${seat.position + 1}번 자리, ${seat.occupant.name}${isMine ? " (나)" : ""}`}
-        title={seat.occupant.name}
-      >
-        <span className="size-1 rounded-full bg-black/50" />
-        <span className="size-1 rounded-full bg-black/50" />
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={isMine ? handleClick : undefined}
+      disabled={isPending || !isMine}
+      className={`flex size-7 items-center justify-center gap-1 rounded-md shadow-sm ${colorClass} ${
+        isMine ? "ring-2 ring-emerald-500" : ""
+      } disabled:opacity-90`}
+      aria-label={`${seat.position + 1}번 자리, ${seat.occupant.name}${isMine ? " (나)" : ""}`}
+      title={seat.occupant.name}
+    >
+      <span className="size-1 rounded-full bg-black/50" />
+      <span className="size-1 rounded-full bg-black/50" />
+    </button>
   );
 }

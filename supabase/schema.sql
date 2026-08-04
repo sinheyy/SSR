@@ -96,7 +96,7 @@ create table public.attendance_logs (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null references public.users(id) on delete cascade,
   date date not null,
-  total_minutes integer default 0,
+  total_seconds integer default 0,
   unique (user_id, date)
 );
 
@@ -198,12 +198,51 @@ insert into public.titles (name, condition, linked_item_id) values
   ('두 달째 정착러', '{"type":"streak","value":60}', (select id from public.items where name = '별자리 망토')),
   ('전설의 도서관장', '{"type":"streak","value":100}', (select id from public.items where name = '도서관장 모자'));
 
+-- ------------------------------------------------------------
+-- (1회성) attendance_logs.total_minutes -> total_seconds 컬럼명 변경
+--    이미 total_seconds로 되어 있다면 이 줄은 건너뛰고 아래부터 실행하세요.
+-- ------------------------------------------------------------
+alter table public.attendance_logs rename column total_minutes to total_seconds;
+
 -- ============================================================
 -- 8. 좌석 착석/퇴장 RPC
 --    클라이언트에서 seats를 직접 update하면 "기존 자리 비우기 + 새 자리 앉기"를
 --    원자적으로 처리할 수 없어서(동시 클릭 시 두 자리에 걸치는 상태가 될 수 있음)
 --    서버 함수로 묶어서 처리합니다.
+--
+--    좌석을 옮기거나 퇴장할 때, 그 직전까지 앉아있던 구간의 시간을
+--    attendance_logs(오늘 누적)와 users.total_study_seconds(전체 누적)에
+--    정산해서 더해줘야 자리를 옮겨도 공부시간이 초기화되지 않습니다.
 -- ============================================================
+
+create or replace function public.settle_current_seat()
+returns void
+language plpgsql
+security invoker
+as $$
+declare
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  select greatest(0, extract(epoch from (now() - status_changed_at))::integer)
+  into elapsed
+  from public.seats
+  where user_id = auth.uid() and status_changed_at is not null;
+
+  if elapsed is null or elapsed = 0 then
+    return;
+  end if;
+
+  insert into public.attendance_logs (user_id, date, total_seconds)
+  values (auth.uid(), today, elapsed)
+  on conflict (user_id, date)
+  do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+  update public.users
+  set total_study_seconds = total_study_seconds + elapsed
+  where id = auth.uid();
+end;
+$$;
 
 create or replace function public.sit_at_seat(target_seat_id uuid)
 returns void
@@ -211,6 +250,9 @@ language plpgsql
 security invoker
 as $$
 begin
+  -- 자리를 옮기는 경우, 기존 자리에 앉아있던 시간부터 정산
+  perform public.settle_current_seat();
+
   -- 기존에 앉아있던 자리가 있으면 비우기
   update public.seats
   set user_id = null, status = null, status_changed_at = null
@@ -233,11 +275,72 @@ language plpgsql
 security invoker
 as $$
 begin
+  perform public.settle_current_seat();
+
   update public.seats
   set user_id = null, status = null, status_changed_at = null
   where user_id = auth.uid();
 end;
 $$;
 
+grant execute on function public.settle_current_seat() to authenticated;
 grant execute on function public.sit_at_seat(uuid) to authenticated;
 grant execute on function public.leave_seat() to authenticated;
+
+-- ============================================================
+-- 9. Realtime 구독 활성화
+--    다른 사람이 착석/퇴장할 때 모든 화면에 즉시 반영되려면 seats
+--    테이블이 supabase_realtime publication에 포함돼 있어야 합니다.
+--    이미 추가돼 있다면 "already member of publication" 에러가 나는데,
+--    이미 설정됐다는 뜻이니 무시해도 됩니다.
+-- ============================================================
+
+alter publication supabase_realtime add table public.seats;
+
+-- ============================================================
+-- 10. 브라우저 종료 시 자동 퇴장 (Presence)
+--    Supabase Realtime Presence는 클라이언트끼리만 아는 상태라 DB 트리거를
+--    걸 수 없습니다. 대신 접속해있는 다른 클라이언트가 "이 유저가 방금
+--    연결이 끊겼다"는 presence leave 이벤트를 감지해서 이 함수를 호출해
+--    그 유저의 좌석을 정산 후 비웁니다.
+--
+--    본인 좌석이 아닌 남의 좌석을 지울 수 있어야 해서 security definer로
+--    RLS를 우회합니다. (내부 로직이 target_user_id로만 동작하도록 고정돼
+--    있어서 임의 SQL 실행 등의 위험은 없지만, 로그인한 사람이면 누구나
+--    아무 좌석이나 비울 수 있다는 점은 감안하세요 — 소규모 내부 도구라
+--    이 정도 신뢰 수준으로 충분하다고 판단했습니다.)
+-- ============================================================
+
+create or replace function public.clear_seat_for_user(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  select greatest(0, extract(epoch from (now() - status_changed_at))::integer)
+  into elapsed
+  from public.seats
+  where user_id = target_user_id and status_changed_at is not null;
+
+  if elapsed is not null and elapsed > 0 then
+    insert into public.attendance_logs (user_id, date, total_seconds)
+    values (target_user_id, today, elapsed)
+    on conflict (user_id, date)
+    do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+    update public.users
+    set total_study_seconds = total_study_seconds + elapsed
+    where id = target_user_id;
+  end if;
+
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = target_user_id;
+end;
+$$;
+
+grant execute on function public.clear_seat_for_user(uuid) to authenticated;
