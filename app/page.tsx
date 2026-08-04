@@ -6,6 +6,8 @@ import type { TableData } from "@/components/seat/types";
 type SeatRow = {
   id: string;
   position: number;
+  user_id: string | null;
+  status_changed_at: string | null;
   users: { name: string; avatar_url: string | null } | null;
 };
 
@@ -26,9 +28,15 @@ function toTableData(row: TableRow): TableData {
       return {
         id: seat.id,
         position: seat.position,
-        occupant: occupant
-          ? { name: occupant.name, avatarUrl: occupant.avatar_url ?? undefined }
-          : null,
+        occupant:
+          occupant && seat.user_id
+            ? {
+                userId: seat.user_id,
+                name: occupant.name,
+                avatarUrl: occupant.avatar_url ?? undefined,
+                sittingSince: seat.status_changed_at ?? new Date().toISOString(),
+              }
+            : null,
       };
     }),
   };
@@ -46,7 +54,9 @@ export default async function Home() {
 
   const { data, error } = await supabase
     .from("tables")
-    .select("id, name, capacity, seats(id, position, users(name, avatar_url))")
+    .select(
+      "id, name, capacity, seats(id, position, user_id, status_changed_at, users(name, avatar_url))"
+    )
     .order("name")
     .order("position", { referencedTable: "seats" });
 
@@ -64,7 +74,7 @@ export default async function Home() {
           좌석 정보를 불러오지 못했습니다.
         </p>
       ) : (
-        <SeatGrid tables={tables} />
+        <SeatGrid tables={tables} currentUserId={user.id} />
       )}
     </div>
   );

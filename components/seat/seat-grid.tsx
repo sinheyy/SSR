@@ -19,7 +19,13 @@ function Plant() {
   );
 }
 
-export default function SeatGrid({ tables }: { tables: TableData[] }) {
+export default function SeatGrid({
+  tables,
+  currentUserId,
+}: {
+  tables: TableData[];
+  currentUserId: string;
+}) {
   return (
     <div className="overflow-hidden rounded-3xl border border-[#c9b28c] bg-[#f0e4d0] shadow-sm dark:border-[#4a3d2a] dark:bg-[#3a2f20]">
       <div className="flex items-center justify-around border-b border-[#c9b28c] bg-[#d9c6a0] px-8 py-5 dark:border-[#4a3d2a] dark:bg-[#4a3d2a]">
@@ -30,7 +36,7 @@ export default function SeatGrid({ tables }: { tables: TableData[] }) {
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-10 px-8 py-10 sm:grid-cols-4">
         {tables.map((table) => (
-          <TableUnit key={table.id} table={table} />
+          <TableUnit key={table.id} table={table} currentUserId={currentUserId} />
         ))}
       </div>
       <div className="flex items-end justify-between px-6 pb-4">

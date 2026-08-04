@@ -197,3 +197,47 @@ insert into public.titles (name, condition, linked_item_id) values
   ('한 달 개근왕', '{"type":"streak","value":30}', (select id from public.items where name = '금박 왕관')),
   ('두 달째 정착러', '{"type":"streak","value":60}', (select id from public.items where name = '별자리 망토')),
   ('전설의 도서관장', '{"type":"streak","value":100}', (select id from public.items where name = '도서관장 모자'));
+
+-- ============================================================
+-- 8. 좌석 착석/퇴장 RPC
+--    클라이언트에서 seats를 직접 update하면 "기존 자리 비우기 + 새 자리 앉기"를
+--    원자적으로 처리할 수 없어서(동시 클릭 시 두 자리에 걸치는 상태가 될 수 있음)
+--    서버 함수로 묶어서 처리합니다.
+-- ============================================================
+
+create or replace function public.sit_at_seat(target_seat_id uuid)
+returns void
+language plpgsql
+security invoker
+as $$
+begin
+  -- 기존에 앉아있던 자리가 있으면 비우기
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = auth.uid();
+
+  -- 새 자리에 착석 (이미 다른 사람이 앉아있으면 실패)
+  update public.seats
+  set user_id = auth.uid(), status_changed_at = now()
+  where id = target_seat_id and user_id is null;
+
+  if not found then
+    raise exception '이미 다른 사람이 앉아있는 자리입니다';
+  end if;
+end;
+$$;
+
+create or replace function public.leave_seat()
+returns void
+language plpgsql
+security invoker
+as $$
+begin
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = auth.uid();
+end;
+$$;
+
+grant execute on function public.sit_at_seat(uuid) to authenticated;
+grant execute on function public.leave_seat() to authenticated;
