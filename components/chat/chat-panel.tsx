@@ -25,7 +25,13 @@ export default function ChatPanel({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasUnread, setHasUnread] = useState(false);
   const listEndRef = useRef<HTMLDivElement>(null);
+  const openRef = useRef(open);
+
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +52,7 @@ export default function ChatPanel({
         { event: "INSERT", schema: "public", table: "messages" },
         (payload: RealtimePostgresInsertPayload<Message>) => {
           setMessages((prev) => [...prev, payload.new]);
+          if (!openRef.current) setHasUnread(true);
         }
       )
       .subscribe();
@@ -135,11 +142,17 @@ export default function ChatPanel({
       )}
 
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-2xl text-white shadow-lg dark:bg-zinc-50 dark:text-black"
+        onClick={() => {
+          setOpen((v) => !v);
+          setHasUnread(false);
+        }}
+        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-black text-2xl text-white shadow-lg dark:bg-zinc-50 dark:text-black"
         aria-label="채팅 토글"
       >
         💬
+        {hasUnread && (
+          <span className="absolute right-1 top-1 h-3 w-3 rounded-full bg-red-500 ring-2 ring-white dark:ring-zinc-900" />
+        )}
       </button>
     </div>
   );
