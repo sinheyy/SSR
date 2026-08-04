@@ -6,7 +6,7 @@ import type { TableData } from "@/components/seat/types";
 type SeatRow = {
   id: string;
   position: number;
-  users: { name: string; avatar_url: string | null }[];
+  users: { name: string; avatar_url: string | null } | null;
 };
 
 type TableRow = {
@@ -22,7 +22,7 @@ function toTableData(row: TableRow): TableData {
     name: row.name,
     capacity: row.capacity as 4 | 6,
     seats: row.seats.map((seat) => {
-      const occupant = seat.users[0];
+      const occupant = seat.users;
       return {
         id: seat.id,
         position: seat.position,
@@ -50,7 +50,9 @@ export default async function Home() {
     .order("name")
     .order("position", { referencedTable: "seats" });
 
-  const tables = error ? [] : ((data ?? []) as TableRow[]).map(toTableData);
+  const tables = error
+    ? []
+    : ((data ?? []) as unknown as TableRow[]).map(toTableData);
 
   return (
     <div className="flex flex-1 flex-col gap-6 bg-zinc-50 p-8 dark:bg-black">
