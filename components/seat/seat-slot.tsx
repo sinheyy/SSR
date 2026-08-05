@@ -65,7 +65,7 @@ export default function SeatSlot({
         type="button"
         onClick={isMine ? handleClick : undefined}
         disabled={isPending || !isMine}
-        className={`flex size-7 items-center justify-center gap-1 rounded-md shadow-sm ${colorClass} ${
+        className={`relative flex size-7 items-center justify-center gap-1 rounded-md shadow-sm ${colorClass} ${
           isMine ? "ring-2 ring-emerald-500" : ""
         } disabled:opacity-90`}
         aria-label={`${seat.position + 1}번 자리, ${seat.occupant.name}${isMine ? " (나)" : ""}`}
@@ -73,6 +73,16 @@ export default function SeatSlot({
       >
         <span className="size-1 rounded-full bg-black/50" />
         <span className="size-1 rounded-full bg-black/50" />
+        {seat.occupant.customItems?.map((item, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={i}
+            src={item.image}
+            alt=""
+            className="absolute size-4 -translate-x-1/2 -translate-y-1/2 object-contain"
+            style={{ left: `${item.x}%`, top: `${item.y}%` }}
+          />
+        ))}
       </button>
     </div>
   );

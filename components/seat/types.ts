@@ -4,6 +4,7 @@ export type Occupant = {
   avatarUrl?: string;
   sittingSince: string;
   mood: string | null;
+  customItems?: { image: string; x: number; y: number }[];
 };
 
 export type SeatData = {
