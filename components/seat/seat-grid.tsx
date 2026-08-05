@@ -1,4 +1,6 @@
 import TableUnit from "@/components/seat/table-unit";
+import RankingBoard from "@/components/seat/ranking-board";
+import type { Rankings } from "@/components/seat/ranking-data";
 import type { TableData } from "@/components/seat/types";
 
 function Window() {
@@ -22,14 +24,28 @@ function Plant() {
 export default function SeatGrid({
   tables,
   currentUserId,
+  rankings,
 }: {
   tables: TableData[];
   currentUserId: string;
+  rankings: Rankings;
 }) {
   return (
     <div className="overflow-hidden rounded-3xl border border-[#c9b28c] bg-[#f0e4d0] shadow-sm dark:border-[#4a3d2a] dark:bg-[#3a2f20]">
-      <div className="flex items-center justify-around border-b border-[#c9b28c] bg-[#d9c6a0] px-8 py-5 dark:border-[#4a3d2a] dark:bg-[#4a3d2a]">
+      <div className="flex items-center justify-around border-b border-[#c9b28c] bg-[#d9c6a0] px-8 py-7 dark:border-[#4a3d2a] dark:bg-[#4a3d2a]">
         <Window />
+        <RankingBoard
+          title="시간랭킹"
+          icon="⏱️"
+          kind="time"
+          entries={rankings.byTime}
+        />
+        <RankingBoard
+          title="출석랭킹"
+          icon="🔥"
+          kind="streak"
+          entries={rankings.byStreak}
+        />
         <Window />
         <Window />
         <Window />

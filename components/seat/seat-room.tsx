@@ -4,20 +4,25 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { clearSeatForUser } from "@/components/seat/actions";
 import { fetchTables } from "@/components/seat/data";
+import { fetchRankings } from "@/components/seat/ranking-data";
 import SeatGrid from "@/components/seat/seat-grid";
 import StudyTimer from "@/components/seat/study-timer";
 import type { TableData } from "@/components/seat/types";
+import type { Rankings } from "@/components/seat/ranking-data";
 
 export default function SeatRoom({
   initialTables,
+  initialRankings,
   currentUserId,
   todayBaselineSeconds,
 }: {
   initialTables: TableData[];
+  initialRankings: Rankings;
   currentUserId: string;
   todayBaselineSeconds: number;
 }) {
   const [tables, setTables] = useState(initialTables);
+  const [rankings, setRankings] = useState(initialRankings);
 
   useEffect(() => {
     const supabase = createClient();
@@ -41,6 +46,7 @@ export default function SeatRoom({
           fetchTables(supabase).then(({ tables, error }) => {
             if (!error) setTables(tables);
           });
+          fetchRankings(supabase).then(setRankings);
         }
       )
       .on("presence", { event: "leave" }, ({ key }) => {
@@ -74,7 +80,11 @@ export default function SeatRoom({
           sittingSince={mySeat?.occupant?.sittingSince ?? null}
         />
       </div>
-      <SeatGrid tables={tables} currentUserId={currentUserId} />
+      <SeatGrid
+        tables={tables}
+        currentUserId={currentUserId}
+        rankings={rankings}
+      />
     </>
   );
 }
