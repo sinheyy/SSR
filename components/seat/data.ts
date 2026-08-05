@@ -1,15 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { WornItem } from "@/components/costume/types";
 import type { TableData } from "@/components/seat/types";
 
 const TABLES_SELECT =
-  "id, name, capacity, seats(id, position, user_id, status_changed_at, users(name, avatar_url))";
+  "id, name, capacity, seats(id, position, user_id, status_changed_at, users(name, avatar_url, worn_items))";
 
 type SeatRow = {
   id: string;
   position: number;
   user_id: string | null;
   status_changed_at: string | null;
-  users: { name: string; avatar_url: string | null } | null;
+  users: {
+    name: string;
+    avatar_url: string | null;
+    worn_items: WornItem[] | null;
+  } | null;
 };
 
 type TableRow = {
@@ -19,7 +24,10 @@ type TableRow = {
   seats: SeatRow[];
 };
 
-function toTableData(row: TableRow): TableData {
+function toTableData(
+  row: TableRow,
+  customItemImages: Map<string, string>
+): TableData {
   return {
     id: row.id,
     name: row.name,
@@ -36,6 +44,14 @@ function toTableData(row: TableRow): TableData {
                 name: occupant.name,
                 avatarUrl: occupant.avatar_url ?? undefined,
                 sittingSince: seat.status_changed_at ?? new Date().toISOString(),
+                customItems: (occupant.worn_items ?? [])
+                  .filter((worn) => worn.source === "custom")
+                  .map((worn) => ({
+                    image: customItemImages.get(worn.item_id) ?? "",
+                    x: worn.x,
+                    y: worn.y,
+                  }))
+                  .filter((item) => item.image),
               }
             : null,
       };
@@ -56,8 +72,30 @@ export async function fetchTables(
     return { tables: [], error: true };
   }
 
+  const rows = (data ?? []) as unknown as TableRow[];
+  const customItemIds = [
+    ...new Set(
+      rows
+        .flatMap((row) => row.seats)
+        .flatMap((seat) => seat.users?.worn_items ?? [])
+        .filter((worn) => worn.source === "custom")
+        .map((worn) => worn.item_id)
+    ),
+  ];
+
+  const customItemImages = new Map<string, string>();
+  if (customItemIds.length > 0) {
+    const { data: customItems } = await supabase
+      .from("custom_items")
+      .select("id, image")
+      .in("id", customItemIds);
+    for (const item of customItems ?? []) {
+      customItemImages.set(item.id, item.image);
+    }
+  }
+
   return {
-    tables: ((data ?? []) as unknown as TableRow[]).map(toTableData),
+    tables: rows.map((row) => toTableData(row, customItemImages)),
     error: false,
   };
 }

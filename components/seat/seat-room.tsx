@@ -34,6 +34,15 @@ export default function SeatRoom({
           });
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "users" },
+        () => {
+          fetchTables(supabase).then(({ tables, error }) => {
+            if (!error) setTables(tables);
+          });
+        }
+      )
       .on("presence", { event: "leave" }, ({ key }) => {
         // 같은 key(userId)로 다른 탭이 여전히 열려있으면 leave가 안 오므로
         // 여기 도달했다는 건 그 유저의 마지막 연결이 끊겼다는 뜻

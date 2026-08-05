@@ -8,7 +8,6 @@ create extension if not exists "uuid-ossp";
 create table public.items (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
-  category text not null check (category in ('hat', 'glasses', 'etc')),
   unlock_condition jsonb,  -- null = 기본 제공 아이템, {"type":"streak","value":3} 형태
   created_at timestamptz default now()
 );
@@ -178,16 +177,16 @@ select t.id, gs.position
 from public.tables t
 cross join lateral generate_series(0, t.capacity - 1) as gs(position);
 
--- 7-3. 코디템 카탈로그 (기본 제공 2종 + 칭호 연동 6종)
-insert into public.items (name, category, unlock_condition) values
-  ('왕관', 'hat', null),
-  ('선글라스', 'glasses', null),
-  ('별핀', 'hat', '{"type":"streak","value":3}'),
-  ('도트 리본', 'etc', '{"type":"streak","value":7}'),
-  ('동그란 안경', 'glasses', '{"type":"streak","value":14}'),
-  ('금박 왕관', 'hat', '{"type":"streak","value":30}'),
-  ('별자리 망토', 'etc', '{"type":"streak","value":60}'),
-  ('도서관장 모자', 'hat', '{"type":"streak","value":100}');
+-- 7-3. 코디템 카탈로그 (전부 해금 조건 있음 — 기본 제공 아이템 없음)
+insert into public.items (name, unlock_condition) values
+  ('왕관', '{"type":"streak","value":1}'),
+  ('선글라스', '{"type":"streak","value":2}'),
+  ('별핀', '{"type":"streak","value":3}'),
+  ('도트 리본', '{"type":"streak","value":7}'),
+  ('동그란 안경', '{"type":"streak","value":14}'),
+  ('금박 왕관', '{"type":"streak","value":30}'),
+  ('별자리 망토', '{"type":"streak","value":60}'),
+  ('도서관장 모자', '{"type":"streak","value":100}');
 
 -- 7-4. 칭호 카탈로그 (기획안 3.1 보상 체계 표와 동일)
 insert into public.titles (name, condition, linked_item_id) values
@@ -296,6 +295,42 @@ grant execute on function public.leave_seat() to authenticated;
 -- ============================================================
 
 alter publication supabase_realtime add table public.seats;
+
+-- ============================================================
+-- 11. custom_items : 유저가 옷장 드로어에서 직접 그린 코디템
+--    Storage 버킷 없이 base64 PNG를 텍스트로 저장 (MVP, 캔버스가 작아서
+--    이미지 용량도 작음 — 나중에 커지면 Storage로 옮기는 걸 검토)
+-- ============================================================
+
+create table public.custom_items (
+  id uuid primary key default uuid_generate_v4(),
+  owner_id uuid not null references public.users(id) on delete cascade,
+  image text not null, -- data:image/png;base64,... 형태
+  created_at timestamptz default now()
+);
+
+create index idx_custom_items_owner on public.custom_items(owner_id);
+
+-- worn_items: 그린 아이템/보상 아이템을 구분 없이 하나의 리스트로 착용 관리.
+-- [{ "source": "custom"|"catalog", "item_id": "<uuid>", "x": 50, "y": 30 }, ...]
+-- x/y는 캐릭터 미리보기 기준 0~100 비율 좌표 (드로어에서 드래그로 조정)
+-- 기존 equipped_items(jsonb)는 그대로 남겨두지만 이 기능에서는 안 씁니다.
+alter table public.users
+  add column worn_items jsonb default '[]'::jsonb;
+
+alter table public.custom_items enable row level security;
+
+-- custom_items: 전체 조회 가능(남 화면에도 보여야 함), 본인 명의로만 생성/삭제
+create policy "custom_items_select_all" on public.custom_items
+  for select using (auth.role() = 'authenticated');
+create policy "custom_items_insert_own" on public.custom_items
+  for insert with check (owner_id = auth.uid());
+create policy "custom_items_delete_own" on public.custom_items
+  for delete using (owner_id = auth.uid());
+
+-- users 테이블도 realtime에 추가 — worn_items가 바뀌면 다른 사람 화면의
+-- 좌석 그리드도 갱신되어야 함
+alter publication supabase_realtime add table public.users;
 
 -- ============================================================
 -- 10. 브라우저 종료 시 자동 퇴장 (Presence)
