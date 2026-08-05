@@ -344,3 +344,117 @@ end;
 $$;
 
 grant execute on function public.clear_seat_for_user(uuid) to authenticated;
+
+-- ============================================================
+-- 11. 연속 출석일(streak_days) 자동 계산
+--    attendance_logs에 "그 날 공부 기록"이 쌓이는 시점(정산 시점)마다
+--    오늘부터 거슬러 며칠 연속으로 공부 기록이 있는지 다시 세어
+--    users.streak_days에 반영합니다. 오늘 기록이 아직 없으면(=아직
+--    한 번도 정산 안 됨) 어제까지의 연속 기록으로 계산하므로, 자정이
+--    지나자마자 스트릭이 0으로 끊겨 보이지 않습니다.
+-- ============================================================
+
+create or replace function public.recompute_streak(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  streak integer := 0;
+  cursor_date date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  if not exists (
+    select 1 from public.attendance_logs
+    where user_id = target_user_id and date = cursor_date and total_seconds > 0
+  ) then
+    cursor_date := cursor_date - 1;
+  end if;
+
+  while exists (
+    select 1 from public.attendance_logs
+    where user_id = target_user_id and date = cursor_date and total_seconds > 0
+  ) loop
+    streak := streak + 1;
+    cursor_date := cursor_date - 1;
+  end loop;
+
+  update public.users set streak_days = streak where id = target_user_id;
+end;
+$$;
+
+grant execute on function public.recompute_streak(uuid) to authenticated;
+
+-- settle_current_seat / clear_seat_for_user가 attendance_logs를 갱신한
+-- 직후 streak도 같이 재계산하도록 재정의
+create or replace function public.settle_current_seat()
+returns void
+language plpgsql
+security invoker
+as $$
+declare
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  select greatest(0, extract(epoch from (now() - status_changed_at))::integer)
+  into elapsed
+  from public.seats
+  where user_id = auth.uid() and status_changed_at is not null;
+
+  if elapsed is null or elapsed = 0 then
+    return;
+  end if;
+
+  insert into public.attendance_logs (user_id, date, total_seconds)
+  values (auth.uid(), today, elapsed)
+  on conflict (user_id, date)
+  do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+  update public.users
+  set total_study_seconds = total_study_seconds + elapsed
+  where id = auth.uid();
+
+  perform public.recompute_streak(auth.uid());
+end;
+$$;
+
+create or replace function public.clear_seat_for_user(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  select greatest(0, extract(epoch from (now() - status_changed_at))::integer)
+  into elapsed
+  from public.seats
+  where user_id = target_user_id and status_changed_at is not null;
+
+  if elapsed is not null and elapsed > 0 then
+    insert into public.attendance_logs (user_id, date, total_seconds)
+    values (target_user_id, today, elapsed)
+    on conflict (user_id, date)
+    do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+    update public.users
+    set total_study_seconds = total_study_seconds + elapsed
+    where id = target_user_id;
+
+    perform public.recompute_streak(target_user_id);
+  end if;
+
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = target_user_id;
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- (1회성) 기존 유저들 streak_days 한 번 백필
+--    이미 위 함수들이 적용된 뒤로 계속 정산되고 있었다면 이 줄은
+--    건너뛰어도 됩니다.
+-- ------------------------------------------------------------
+select public.recompute_streak(id) from public.users;
