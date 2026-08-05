@@ -3,6 +3,7 @@ export type Occupant = {
   name: string;
   avatarUrl?: string;
   sittingSince: string;
+  mood: string | null;
 };
 
 export type SeatData = {

@@ -2,14 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TableData } from "@/components/seat/types";
 
 const TABLES_SELECT =
-  "id, name, capacity, seats(id, position, user_id, status_changed_at, users(name, avatar_url))";
+  "id, name, capacity, seats(id, position, user_id, status_changed_at, users(name, avatar_url, mood))";
 
 type SeatRow = {
   id: string;
   position: number;
   user_id: string | null;
   status_changed_at: string | null;
-  users: { name: string; avatar_url: string | null } | null;
+  users: { name: string; avatar_url: string | null; mood: string | null } | null;
 };
 
 type TableRow = {
@@ -36,6 +36,7 @@ function toTableData(row: TableRow): TableData {
                 name: occupant.name,
                 avatarUrl: occupant.avatar_url ?? undefined,
                 sittingSince: seat.status_changed_at ?? new Date().toISOString(),
+                mood: occupant.mood,
               }
             : null,
       };

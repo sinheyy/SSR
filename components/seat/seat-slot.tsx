@@ -3,21 +3,22 @@
 import { useTransition } from "react";
 import { leaveSeat, sitAtSeat } from "@/components/seat/actions";
 import type { SeatData } from "@/components/seat/types";
+import { colorForUser } from "@/lib/avatar-color";
+import { isMood, MOOD_EMOJI } from "@/components/mypage/moods";
 
-const AVATAR_COLORS = [
-  "bg-orange-300 dark:bg-orange-800/70",
-  "bg-pink-300 dark:bg-pink-800/70",
-  "bg-emerald-300 dark:bg-emerald-800/70",
-  "bg-sky-300 dark:bg-sky-800/70",
-  "bg-violet-300 dark:bg-violet-800/70",
-];
-
-function colorForUser(userId: string) {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    hash = (hash * 31 + userId.charCodeAt(i)) | 0;
-  }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+function MoodBubble({ mood }: { mood: string | null }) {
+  if (!mood || !isMood(mood)) return null;
+  return (
+    <div className="pointer-events-none absolute -top-2.5 left-1/2 z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center drop-shadow-sm">
+      <div className="flex size-7 items-center justify-center rounded-full border border-black/10 bg-white text-base leading-none dark:border-white/10 dark:bg-zinc-800">
+        {MOOD_EMOJI[mood]}
+      </div>
+      <div
+        className="-mt-1.5 h-2.5 w-3 bg-white dark:bg-zinc-800"
+        style={{ clipPath: "polygon(15% 0%, 85% 0%, 35% 100%)" }}
+      />
+    </div>
+  );
 }
 
 export default function SeatSlot({
@@ -58,18 +59,21 @@ export default function SeatSlot({
   const colorClass = colorForUser(seat.occupant.userId);
 
   return (
-    <button
-      type="button"
-      onClick={isMine ? handleClick : undefined}
-      disabled={isPending || !isMine}
-      className={`flex size-7 items-center justify-center gap-1 rounded-md shadow-sm ${colorClass} ${
-        isMine ? "ring-2 ring-emerald-500" : ""
-      } disabled:opacity-90`}
-      aria-label={`${seat.position + 1}번 자리, ${seat.occupant.name}${isMine ? " (나)" : ""}`}
-      title={seat.occupant.name}
-    >
-      <span className="size-1 rounded-full bg-black/50" />
-      <span className="size-1 rounded-full bg-black/50" />
-    </button>
+    <div className="relative">
+      <MoodBubble mood={seat.occupant.mood} />
+      <button
+        type="button"
+        onClick={isMine ? handleClick : undefined}
+        disabled={isPending || !isMine}
+        className={`flex size-7 items-center justify-center gap-1 rounded-md shadow-sm ${colorClass} ${
+          isMine ? "ring-2 ring-emerald-500" : ""
+        } disabled:opacity-90`}
+        aria-label={`${seat.position + 1}번 자리, ${seat.occupant.name}${isMine ? " (나)" : ""}`}
+        title={seat.occupant.name}
+      >
+        <span className="size-1 rounded-full bg-black/50" />
+        <span className="size-1 rounded-full bg-black/50" />
+      </button>
+    </div>
   );
 }
