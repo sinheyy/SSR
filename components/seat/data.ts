@@ -3,7 +3,7 @@ import type { WornItem } from "@/components/costume/types";
 import type { TableData } from "@/components/seat/types";
 
 const TABLES_SELECT =
-  "id, name, capacity, seats(id, position, user_id, status_changed_at, users(name, avatar_url, worn_items))";
+  "id, name, capacity, seats(id, position, user_id, status_changed_at, users(name, avatar_url, mood, worn_items))";
 
 type SeatRow = {
   id: string;
@@ -13,6 +13,7 @@ type SeatRow = {
   users: {
     name: string;
     avatar_url: string | null;
+    mood: string | null;
     worn_items: WornItem[] | null;
   } | null;
 };
@@ -44,6 +45,7 @@ function toTableData(
                 name: occupant.name,
                 avatarUrl: occupant.avatar_url ?? undefined,
                 sittingSince: seat.status_changed_at ?? new Date().toISOString(),
+                mood: occupant.mood,
                 customItems: (occupant.worn_items ?? [])
                   .filter((worn) => worn.source === "custom")
                   .map((worn) => ({

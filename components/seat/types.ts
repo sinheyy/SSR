@@ -3,6 +3,7 @@ export type Occupant = {
   name: string;
   avatarUrl?: string;
   sittingSince: string;
+  mood: string | null;
   customItems?: { image: string; x: number; y: number }[];
 };
 

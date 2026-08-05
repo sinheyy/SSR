@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { colorForUser } from "@/components/seat/avatar-color";
+import { colorForUser } from "@/lib/avatar-color";
 import type { WornItem } from "@/components/costume/types";
 
 export default function CharacterPreview({
