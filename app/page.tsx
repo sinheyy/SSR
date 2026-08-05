@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTables } from "@/components/seat/data";
+import { fetchRankings } from "@/components/seat/ranking-data";
 import SeatRoom from "@/components/seat/seat-room";
 
 export default async function Home() {
@@ -14,6 +15,7 @@ export default async function Home() {
   }
 
   const { tables, error } = await fetchTables(supabase);
+  const rankings = await fetchRankings(supabase);
 
   const today = new Date().toLocaleDateString("en-CA", {
     timeZone: "Asia/Seoul",
@@ -39,6 +41,7 @@ export default async function Home() {
       ) : (
         <SeatRoom
           initialTables={tables}
+          initialRankings={rankings}
           currentUserId={user.id}
           todayBaselineSeconds={attendance?.total_seconds ?? 0}
         />

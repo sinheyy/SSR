@@ -34,7 +34,7 @@ create table public.users (
   equipped_items jsonb default '{}'::jsonb,     -- { "hat": "<item_id>", "glasses": "<item_id>" }
   unlocked_items uuid[] default '{}',
   mood text default '집중중'
-    check (mood in ('집중중', '졸려요', '신남', '피곤')),
+    check (mood in ('집중중', '졸려요', '신나요', '피곤해요', '배고파요')),
   earned_titles uuid[] default '{}',
   equipped_title uuid references public.titles(id),
   total_study_seconds integer default 0,        -- 랭킹용 전체 누적 공부시간
@@ -493,3 +493,16 @@ $$;
 --    건너뛰어도 됩니다.
 -- ------------------------------------------------------------
 select public.recompute_streak(id) from public.users;
+
+-- ------------------------------------------------------------
+-- (1회성) mood 값 변경: 신남 -> 신나요, 피곤 -> 피곤해요, 배고파요 추가
+--    기존 데이터부터 새 값으로 바꾼 뒤에 체크 제약을 갈아끼웁니다
+--    (순서를 바꾸면 기존 '신남'/'피곤' 행에서 제약 위반이 납니다).
+-- ------------------------------------------------------------
+update public.users set mood = '신나요' where mood = '신남';
+update public.users set mood = '피곤해요' where mood = '피곤';
+
+alter table public.users drop constraint if exists users_mood_check;
+alter table public.users
+  add constraint users_mood_check
+  check (mood in ('집중중', '졸려요', '신나요', '피곤해요', '배고파요'));
