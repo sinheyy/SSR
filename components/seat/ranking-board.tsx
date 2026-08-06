@@ -94,7 +94,7 @@ export default function RankingBoard({
                       {i + 1}
                     </span>
                     <span
-                      className={`relative flex size-7 shrink-0 items-center justify-center gap-1 rounded-md shadow-sm ${colorForUser(entry.userId)}`}
+                      className={`relative flex size-7 shrink-0 items-center justify-center gap-1 rounded-md shadow-sm ${colorForUser(entry.userId, entry.avatarColor)}`}
                       aria-hidden
                     >
                       <span className="size-1 rounded-full bg-black/50" />

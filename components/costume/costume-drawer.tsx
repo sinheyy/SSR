@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { AVATAR_COLORS } from "@/lib/avatar-color";
 import DrawingCanvas from "@/components/costume/drawing-canvas";
 import CharacterPreview from "@/components/costume/character-preview";
 import type { WornItem } from "@/components/costume/types";
@@ -22,21 +23,32 @@ export default function CostumeDrawer({
   userId,
   unlockedItemIds,
   wornItems: initialWornItems,
+  avatarColor: initialAvatarColor,
   catalogItems,
   customItems,
 }: {
   userId: string;
   unlockedItemIds: string[];
   wornItems: WornItem[];
+  avatarColor: string | null;
   catalogItems: CatalogItem[];
   customItems: CustomItem[];
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(customItems);
   const [wornItems, setWornItems] = useState(initialWornItems);
+  const [avatarColor, setAvatarColor] = useState(initialAvatarColor);
   const [saving, setSaving] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  async function handlePickColor(color: string) {
+    setAvatarColor(color);
+    await supabase
+      .from("users")
+      .update({ avatar_color: color })
+      .eq("id", userId);
+  }
 
   async function persistWornItems(next: WornItem[]) {
     setWornItems(next);
@@ -136,25 +148,56 @@ export default function CostumeDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
+          <p className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            내 캐릭터
+          </p>
           <p className="mb-2 text-center text-xs text-zinc-500">
-            아이템을 드래그해서 위치를 옮겨보세요
+            착용한 아이템은 드래그해서 위치를 옮길 수 있어요
           </p>
           <CharacterPreview
             userId={userId}
+            avatarColor={avatarColor}
             wornItems={wornItems}
             customImages={customImages}
             catalogNames={catalogNames}
             onMove={handleMove}
           />
 
+          <p className="mb-1.5 mt-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            캐릭터 색
+          </p>
+          <div className="mx-auto grid w-fit grid-cols-5 gap-1.5">
+            {AVATAR_COLORS.map((color) => {
+              const swatchClass = color.split(" ")[0]; // 라이트모드 배경색만 스와치로 표시
+              return (
+                <button
+                  key={color}
+                  onClick={() => handlePickColor(color)}
+                  aria-label={`캐릭터 색 ${swatchClass}`}
+                  className={`size-6 rounded-full border border-black/[.15] dark:border-white/[.2] ${swatchClass} ${
+                    avatarColor === color
+                      ? "ring-2 ring-offset-1 ring-black dark:ring-white"
+                      : ""
+                  }`}
+                />
+              );
+            })}
+          </div>
+
           <div className="my-4 border-t border-black/[.08] dark:border-white/[.145]" />
 
+          <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            아이템 그리기
+          </p>
           <DrawingCanvas onSave={handleSaveDrawing} saving={saving} />
 
           <div className="my-4 border-t border-black/[.08] dark:border-white/[.145]" />
 
           <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
             내 아이템
+          </p>
+          <p className="mb-2 text-xs text-zinc-500">
+            눌러서 착용/해제 · 그린 아이템은 ✕로 삭제
           </p>
           <div className="grid grid-cols-4 gap-2">
             {items.map((item) => (

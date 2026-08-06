@@ -36,7 +36,7 @@ export default async function MyPage() {
     supabase
       .from("users")
       .select(
-        "name, email, avatar_url, class, mood, total_study_seconds, streak_days, titles(name)"
+        "name, email, avatar_url, avatar_color, class, mood, total_study_seconds, streak_days, titles(name)"
       )
       .eq("id", user.id)
       .single(),
@@ -74,6 +74,7 @@ export default async function MyPage() {
         name={profile?.name ?? user.user_metadata?.name ?? "이름 없음"}
         email={profile?.email ?? user.email ?? null}
         avatarUrl={profile?.avatar_url ?? null}
+        avatarColor={profile?.avatar_color ?? null}
         className={profile?.class ?? null}
         mood={profile?.mood ?? null}
         titleName={titleName}

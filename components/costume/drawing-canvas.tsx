@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 const SIZE = 96;
+// 무채색 4개 + 무지개 순서 10개 = 14개, 7칸씩 2줄로 깔끔하게 배치
 const COLORS = [
   "#000000",
   "#ffffff",
@@ -86,7 +87,7 @@ export default function DrawingCanvas({
         onPointerLeave={handlePointerUp}
         className="touch-none rounded-md border border-black/[.08] bg-white dark:border-white/[.145]"
       />
-      <div className="flex max-w-56 flex-wrap justify-center gap-1">
+      <div className="grid w-fit grid-cols-7 gap-1">
         {COLORS.map((c) => (
           <button
             key={c}

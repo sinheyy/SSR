@@ -5,6 +5,7 @@ export type RankingEntry = {
   userId: string;
   name: string;
   value: number;
+  avatarColor: string | null;
   customItems: { image: string; x: number; y: number }[];
 };
 
@@ -17,6 +18,7 @@ type TimeRow = {
   id: string;
   name: string;
   total_study_seconds: number | null;
+  avatar_color: string | null;
   worn_items: WornItem[] | null;
 };
 
@@ -24,6 +26,7 @@ type StreakRow = {
   id: string;
   name: string;
   streak_days: number | null;
+  avatar_color: string | null;
   worn_items: WornItem[] | null;
 };
 
@@ -47,12 +50,12 @@ export async function fetchRankings(
   const [{ data: byTime }, { data: byStreak }] = await Promise.all([
     supabase
       .from("users")
-      .select("id, name, total_study_seconds, worn_items")
+      .select("id, name, total_study_seconds, avatar_color, worn_items")
       .order("total_study_seconds", { ascending: false })
       .limit(10),
     supabase
       .from("users")
-      .select("id, name, streak_days, worn_items")
+      .select("id, name, streak_days, avatar_color, worn_items")
       .order("streak_days", { ascending: false })
       .limit(10),
   ]);
@@ -85,12 +88,14 @@ export async function fetchRankings(
       userId: row.id,
       name: row.name,
       value: row.total_study_seconds ?? 0,
+      avatarColor: row.avatar_color,
       customItems: toCustomItems(row.worn_items, customItemImages),
     })),
     byStreak: byStreakRows.map((row) => ({
       userId: row.id,
       name: row.name,
       value: row.streak_days ?? 0,
+      avatarColor: row.avatar_color,
       customItems: toCustomItems(row.worn_items, customItemImages),
     })),
   };
