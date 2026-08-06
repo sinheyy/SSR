@@ -29,3 +29,25 @@ export async function updateMood(mood: Mood) {
 
   revalidatePath("/mypage");
 }
+
+export async function updateMoodVisibility(showMood: boolean) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("로그인이 필요합니다");
+  }
+
+  const { error } = await supabase
+    .from("users")
+    .update({ show_mood: showMood })
+    .eq("id", user.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/mypage");
+}

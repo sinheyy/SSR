@@ -11,6 +11,7 @@ export default function ProfileCard({
   customItems,
   className,
   mood,
+  showMood,
   titleName,
 }: {
   userId: string;
@@ -21,6 +22,7 @@ export default function ProfileCard({
   customItems: { image: string; x: number; y: number }[];
   className: string | null;
   mood: string | null;
+  showMood: boolean;
   titleName: string | null;
 }) {
   return (
@@ -69,7 +71,7 @@ export default function ProfileCard({
             {className}
           </p>
         )}
-        <MoodPicker mood={mood && isMood(mood) ? mood : null} />
+        <MoodPicker mood={mood && isMood(mood) ? mood : null} showMood={showMood} />
       </div>
     </div>
   );
