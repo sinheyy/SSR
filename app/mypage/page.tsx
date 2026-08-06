@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ProfileCard from "@/components/mypage/profile-card";
 import StatsPanel, { type DailyStudy } from "@/components/mypage/stats-panel";
+import type { WornItem } from "@/components/costume/types";
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -36,7 +37,7 @@ export default async function MyPage() {
     supabase
       .from("users")
       .select(
-        "name, email, avatar_url, avatar_color, class, mood, total_study_seconds, streak_days, titles(name)"
+        "name, email, avatar_url, avatar_color, worn_items, class, mood, total_study_seconds, streak_days, titles(name)"
       )
       .eq("id", user.id)
       .single(),
@@ -46,6 +47,28 @@ export default async function MyPage() {
       .eq("user_id", user.id)
       .gte("date", days[0].date),
   ]);
+
+  const wornItems = (profile?.worn_items as WornItem[] | null) ?? [];
+  const customItemIds = wornItems
+    .filter((worn) => worn.source === "custom")
+    .map((worn) => worn.item_id);
+
+  let customItems: { image: string; x: number; y: number }[] = [];
+  if (customItemIds.length > 0) {
+    const { data: images } = await supabase
+      .from("custom_items")
+      .select("id, image")
+      .in("id", customItemIds);
+    const imageById = new Map((images ?? []).map((row) => [row.id, row.image]));
+    customItems = wornItems
+      .filter((worn) => worn.source === "custom")
+      .map((worn) => ({
+        image: imageById.get(worn.item_id) ?? "",
+        x: worn.x,
+        y: worn.y,
+      }))
+      .filter((item) => item.image);
+  }
 
   const secondsByDate = new Map(
     (attendance ?? []).map((row) => [row.date, row.total_seconds ?? 0])
@@ -75,6 +98,7 @@ export default async function MyPage() {
         email={profile?.email ?? user.email ?? null}
         avatarUrl={profile?.avatar_url ?? null}
         avatarColor={profile?.avatar_color ?? null}
+        customItems={customItems}
         className={profile?.class ?? null}
         mood={profile?.mood ?? null}
         titleName={titleName}
