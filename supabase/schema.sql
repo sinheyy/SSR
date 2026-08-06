@@ -512,3 +512,68 @@ alter table public.users drop constraint if exists users_mood_check;
 alter table public.users
   add constraint users_mood_check
   check (mood in ('집중중', '졸려요', '신나요', '피곤해요', '배고파요'));
+
+-- ============================================================
+-- 13. 문의/건의 (feedback)
+--    관리자 여부는 별도 role 체계 없이 users.is_admin 플래그 하나로 관리
+--    (소규모 내부 도구라 이 정도면 충분 — 관리자 지정은 Supabase에서
+--    해당 유저 행의 is_admin을 수동으로 true로 바꿔주면 됩니다).
+-- ============================================================
+
+alter table public.users
+  add column is_admin boolean default false;
+
+create table public.feedback (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  user_name text not null,
+  title text not null,
+  content text not null,
+  reply text,
+  replied_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create index idx_feedback_user_id on public.feedback(user_id);
+
+alter table public.feedback enable row level security;
+
+-- feedback: 본인 것만 조회 가능하되, 관리자는 전체 조회 가능
+create policy "feedback_select_own_or_admin" on public.feedback
+  for select using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from public.users where id = auth.uid() and is_admin = true
+    )
+  );
+
+-- feedback: 본인 명의로만 새 문의 작성 가능
+create policy "feedback_insert_own" on public.feedback
+  for insert with check (user_id = auth.uid());
+
+-- feedback: 관리자만 답변(수정) 가능
+create policy "feedback_update_admin" on public.feedback
+  for update using (
+    exists (
+      select 1 from public.users where id = auth.uid() and is_admin = true
+    )
+  );
+
+-- 문의 남기면 관리자 화면에, 답변 달리면 사용자 화면에 실시간 반영
+alter publication supabase_realtime add table public.feedback;
+
+-- ------------------------------------------------------------
+-- (1회성) feedback에 문의 유형(type) 추가, 본인 글 수정/삭제 허용
+--    수정은 아직 답변이 안 달린 글만 가능 (답변 후 내용이 바뀌면
+--    답변이랑 안 맞게 되니까), 삭제는 답변 여부와 상관없이 항상 가능.
+-- ------------------------------------------------------------
+alter table public.feedback
+  add column type text not null default '기타'
+  check (type in ('버그 신고', '기능 제안', '사용 문의', '기타'));
+
+create policy "feedback_update_own_unanswered" on public.feedback
+  for update using (user_id = auth.uid() and reply is null)
+  with check (user_id = auth.uid());
+
+create policy "feedback_delete_own" on public.feedback
+  for delete using (user_id = auth.uid());
