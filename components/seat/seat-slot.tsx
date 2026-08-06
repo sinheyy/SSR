@@ -1,23 +1,106 @@
 "use client";
 
-import { useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { leaveSeat, sitAtSeat } from "@/components/seat/actions";
 import type { SeatData } from "@/components/seat/types";
 import { colorForUser } from "@/lib/avatar-color";
-import { isMood, MOOD_EMOJI } from "@/components/mypage/moods";
+import { updateMood } from "@/components/mypage/actions";
+import { isMood, MOOD_EMOJI, MOODS, type Mood } from "@/components/mypage/moods";
 
-function MoodBubble({ mood }: { mood: string | null }) {
+function MoodBubble({
+  mood,
+  isMine,
+}: {
+  mood: string | null;
+  isMine: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ bottom: number; left: number } | null>(
+    null
+  );
+  const [isPending, startTransition] = useTransition();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
   if (!mood || !isMood(mood)) return null;
+
+  function openPicker() {
+    if (!isMine) return;
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setAnchor({ bottom: window.innerHeight - rect.top + 8, left: rect.left + rect.width / 2 });
+    }
+    setOpen(true);
+  }
+
+  function handleSelect(next: Mood) {
+    if (isPending) return;
+    setOpen(false);
+    if (next === mood) return;
+    startTransition(async () => {
+      await updateMood(next);
+    });
+  }
+
   return (
-    <div className="pointer-events-none absolute -top-2.5 left-1/2 z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center drop-shadow-sm">
-      <div className="flex size-7 items-center justify-center rounded-full border border-black/10 bg-white text-base leading-none dark:border-white/10 dark:bg-zinc-800">
-        {MOOD_EMOJI[mood]}
-      </div>
-      <div
-        className="-mt-1.5 h-2.5 w-3 bg-white dark:bg-zinc-800"
-        style={{ clipPath: "polygon(15% 0%, 85% 0%, 35% 100%)" }}
-      />
-    </div>
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={openPicker}
+        disabled={!isMine}
+        className={`absolute -top-2.5 left-1/2 z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center drop-shadow-sm ${
+          isMine ? "cursor-pointer" : "cursor-default"
+        }`}
+        aria-label={isMine ? "기분 바꾸기" : undefined}
+      >
+        <div className="flex size-7 items-center justify-center rounded-full border border-black/10 bg-white text-base leading-none dark:border-white/10 dark:bg-zinc-800">
+          {MOOD_EMOJI[mood]}
+        </div>
+        <div
+          className="-mt-1.5 h-2.5 w-3 bg-white dark:bg-zinc-800"
+          style={{ clipPath: "polygon(15% 0%, 85% 0%, 35% 100%)" }}
+        />
+      </button>
+
+      {open &&
+        anchor &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setOpen(false)}
+            />
+            <div
+              style={{
+                position: "fixed",
+                bottom: anchor.bottom,
+                left: anchor.left,
+                transform: "translateX(-50%)",
+              }}
+              className="z-50 flex items-center gap-1 rounded-full border border-black/10 bg-white p-1.5 shadow-lg dark:border-white/10 dark:bg-zinc-800"
+            >
+              {MOODS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => handleSelect(m)}
+                  disabled={isPending}
+                  className={`flex size-8 items-center justify-center rounded-full text-lg transition disabled:opacity-50 ${
+                    m === mood
+                      ? "bg-emerald-100 ring-2 ring-emerald-500 dark:bg-emerald-900/50"
+                      : "hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                  }`}
+                  aria-label={m}
+                >
+                  {MOOD_EMOJI[m]}
+                </button>
+              ))}
+            </div>
+          </>,
+          document.body
+        )}
+    </>
   );
 }
 
@@ -60,7 +143,7 @@ export default function SeatSlot({
 
   return (
     <div className="relative">
-      <MoodBubble mood={seat.occupant.mood} />
+      <MoodBubble mood={seat.occupant.mood} isMine={isMine} />
       <button
         type="button"
         onClick={isMine ? handleClick : undefined}
