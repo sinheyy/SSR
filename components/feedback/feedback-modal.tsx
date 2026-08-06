@@ -54,7 +54,7 @@ export default function FeedbackModal() {
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
-                문의/건의 남기기
+                문의 남기기
               </h2>
               <button
                 type="button"
