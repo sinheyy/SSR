@@ -332,6 +332,12 @@ create policy "custom_items_delete_own" on public.custom_items
 -- 좌석 그리드도 갱신되어야 함
 alter publication supabase_realtime add table public.users;
 
+-- avatar_color: 옷장에서 고른 캐릭터 색 프리셋. lib/avatar-color.ts의
+-- AVATAR_COLORS 배열 값(Tailwind 클래스 문자열) 중 하나를 그대로 저장.
+-- null이면 기존처럼 userId 해시로 색이 자동 정해짐.
+alter table public.users
+  add column avatar_color text;
+
 -- ============================================================
 -- 11. 브라우저 종료 시 자동 퇴장 (Presence)
 --    Supabase Realtime Presence는 클라이언트끼리만 아는 상태라 DB 트리거를

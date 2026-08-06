@@ -7,6 +7,7 @@ export default function ProfileCard({
   name,
   email,
   avatarUrl,
+  avatarColor,
   className,
   mood,
   titleName,
@@ -15,6 +16,7 @@ export default function ProfileCard({
   name: string;
   email: string | null;
   avatarUrl: string | null;
+  avatarColor: string | null;
   className: string | null;
   mood: string | null;
   titleName: string | null;
@@ -30,7 +32,7 @@ export default function ProfileCard({
         />
       ) : (
         <div
-          className={`flex size-16 shrink-0 items-center justify-center gap-2 rounded-2xl shadow-sm ${colorForUser(userId)}`}
+          className={`flex size-16 shrink-0 items-center justify-center gap-2 rounded-2xl shadow-sm ${colorForUser(userId, avatarColor)}`}
           aria-hidden
         >
           <span className="size-2 rounded-full bg-black/50" />

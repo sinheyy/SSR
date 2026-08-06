@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { AVATAR_COLORS } from "@/lib/avatar-color";
 import DrawingCanvas from "@/components/costume/drawing-canvas";
 import CharacterPreview from "@/components/costume/character-preview";
 import type { WornItem } from "@/components/costume/types";
@@ -22,21 +23,32 @@ export default function CostumeDrawer({
   userId,
   unlockedItemIds,
   wornItems: initialWornItems,
+  avatarColor: initialAvatarColor,
   catalogItems,
   customItems,
 }: {
   userId: string;
   unlockedItemIds: string[];
   wornItems: WornItem[];
+  avatarColor: string | null;
   catalogItems: CatalogItem[];
   customItems: CustomItem[];
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(customItems);
   const [wornItems, setWornItems] = useState(initialWornItems);
+  const [avatarColor, setAvatarColor] = useState(initialAvatarColor);
   const [saving, setSaving] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  async function handlePickColor(color: string) {
+    setAvatarColor(color);
+    await supabase
+      .from("users")
+      .update({ avatar_color: color })
+      .eq("id", userId);
+  }
 
   async function persistWornItems(next: WornItem[]) {
     setWornItems(next);
@@ -141,11 +153,30 @@ export default function CostumeDrawer({
           </p>
           <CharacterPreview
             userId={userId}
+            avatarColor={avatarColor}
             wornItems={wornItems}
             customImages={customImages}
             catalogNames={catalogNames}
             onMove={handleMove}
           />
+
+          <div className="mt-3 flex justify-center gap-1.5">
+            {AVATAR_COLORS.map((color) => {
+              const swatchClass = color.split(" ")[0]; // 라이트모드 배경색만 스와치로 표시
+              return (
+                <button
+                  key={color}
+                  onClick={() => handlePickColor(color)}
+                  aria-label={`캐릭터 색 ${swatchClass}`}
+                  className={`size-6 rounded-full border border-black/[.15] dark:border-white/[.2] ${swatchClass} ${
+                    avatarColor === color
+                      ? "ring-2 ring-offset-1 ring-black dark:ring-white"
+                      : ""
+                  }`}
+                />
+              );
+            })}
+          </div>
 
           <div className="my-4 border-t border-black/[.08] dark:border-white/[.145]" />
 

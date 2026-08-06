@@ -56,7 +56,7 @@ export default function SeatSlot({
     );
   }
 
-  const colorClass = colorForUser(seat.occupant.userId);
+  const colorClass = colorForUser(seat.occupant.userId, seat.occupant.avatarColor);
 
   return (
     <div className="relative">

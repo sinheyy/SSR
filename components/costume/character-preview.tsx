@@ -6,12 +6,14 @@ import type { WornItem } from "@/components/costume/types";
 
 export default function CharacterPreview({
   userId,
+  avatarColor,
   wornItems,
   customImages,
   catalogNames,
   onMove,
 }: {
   userId: string;
+  avatarColor: string | null;
   wornItems: WornItem[];
   customImages: Map<string, string>;
   catalogNames: Map<string, string>;
@@ -68,7 +70,7 @@ export default function CharacterPreview({
   return (
     <div
       ref={boxRef}
-      className={`relative mx-auto size-40 rounded-md ${colorForUser(userId)}`}
+      className={`relative mx-auto size-40 rounded-md ${colorForUser(userId, avatarColor)}`}
     >
       <span className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 gap-6">
         <span className="size-6 rounded-full bg-black/50" />

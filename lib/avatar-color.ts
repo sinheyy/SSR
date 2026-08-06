@@ -6,7 +6,10 @@ export const AVATAR_COLORS = [
   "bg-violet-300 dark:bg-violet-800/70",
 ];
 
-export function colorForUser(userId: string) {
+export function colorForUser(userId: string, override?: string | null) {
+  if (override && AVATAR_COLORS.includes(override)) {
+    return override;
+  }
   let hash = 0;
   for (let i = 0; i < userId.length; i++) {
     hash = (hash * 31 + userId.charCodeAt(i)) | 0;

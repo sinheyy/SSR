@@ -14,7 +14,7 @@ export default async function CostumeWidget() {
     await Promise.all([
       supabase
         .from("users")
-        .select("unlocked_items, worn_items")
+        .select("unlocked_items, worn_items, avatar_color")
         .eq("id", user.id)
         .single(),
       supabase.from("items").select("id, name, unlock_condition"),
@@ -30,6 +30,7 @@ export default async function CostumeWidget() {
       userId={user.id}
       unlockedItemIds={profile?.unlocked_items ?? []}
       wornItems={(profile?.worn_items as WornItem[] | null) ?? []}
+      avatarColor={profile?.avatar_color ?? null}
       catalogItems={catalogItems ?? []}
       customItems={customItems ?? []}
     />
