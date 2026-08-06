@@ -6,7 +6,6 @@ import { clearSeatForUser } from "@/components/seat/actions";
 import { fetchTables } from "@/components/seat/data";
 import { fetchRankings } from "@/components/seat/ranking-data";
 import SeatGrid from "@/components/seat/seat-grid";
-import StudyTimer from "@/components/seat/study-timer";
 import type { TableData } from "@/components/seat/types";
 import type { Rankings } from "@/components/seat/ranking-data";
 
@@ -14,12 +13,10 @@ export default function SeatRoom({
   initialTables,
   initialRankings,
   currentUserId,
-  todayBaselineSeconds,
 }: {
   initialTables: TableData[];
   initialRankings: Rankings;
   currentUserId: string;
-  todayBaselineSeconds: number;
 }) {
   const [tables, setTables] = useState(initialTables);
   const [rankings, setRankings] = useState(initialRankings);
@@ -65,26 +62,11 @@ export default function SeatRoom({
     };
   }, [currentUserId]);
 
-  const mySeat = tables
-    .flatMap((table) => table.seats)
-    .find((seat) => seat.occupant?.userId === currentUserId);
-
   return (
-    <>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-black dark:text-zinc-50">
-          스터디룸
-        </h1>
-        <StudyTimer
-          todayBaselineSeconds={todayBaselineSeconds}
-          sittingSince={mySeat?.occupant?.sittingSince ?? null}
-        />
-      </div>
-      <SeatGrid
-        tables={tables}
-        currentUserId={currentUserId}
-        rankings={rankings}
-      />
-    </>
+    <SeatGrid
+      tables={tables}
+      currentUserId={currentUserId}
+      rankings={rankings}
+    />
   );
 }

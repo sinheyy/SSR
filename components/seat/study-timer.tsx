@@ -38,9 +38,15 @@ export default function StudyTimer({
   }, [todayBaselineSeconds, sittingSince]);
 
   return (
-    <div className="flex items-baseline gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-      <span>오늘 공부 시간</span>
-      <span className="font-mono text-lg font-semibold text-black dark:text-zinc-50">
+    <div className="relative flex size-28 shrink-0 flex-col items-center justify-center gap-1 rounded-full border-4 border-[#8a6448] bg-[#fbf3e3] shadow-sm dark:border-[#5a4a34] dark:bg-[#4a3d2a]">
+      <span className="absolute top-2 left-1/2 h-2 w-0.5 -translate-x-1/2 bg-[#8a6448]/60 dark:bg-[#e8d9b8]/50" />
+      <span className="absolute bottom-2 left-1/2 h-2 w-0.5 -translate-x-1/2 bg-[#8a6448]/60 dark:bg-[#e8d9b8]/50" />
+      <span className="absolute left-2 top-1/2 h-0.5 w-2 -translate-y-1/2 bg-[#8a6448]/60 dark:bg-[#e8d9b8]/50" />
+      <span className="absolute right-2 top-1/2 h-0.5 w-2 -translate-y-1/2 bg-[#8a6448]/60 dark:bg-[#e8d9b8]/50" />
+      <span className="text-[10px] font-semibold leading-none text-[#8a6448] dark:text-[#c9b28c]">
+        오늘 공부
+      </span>
+      <span className="font-mono text-base font-bold leading-none text-[#5a4632] dark:text-[#e8d9b8]">
         {formatDuration(liveSeconds)}
       </span>
     </div>
