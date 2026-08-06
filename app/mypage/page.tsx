@@ -37,7 +37,7 @@ export default async function MyPage() {
     supabase
       .from("users")
       .select(
-        "name, email, avatar_url, avatar_color, worn_items, class, mood, total_study_seconds, streak_days, titles(name)"
+        "name, email, avatar_url, avatar_color, worn_items, class, mood, show_mood, total_study_seconds, streak_days, titles(name)"
       )
       .eq("id", user.id)
       .single(),
@@ -101,6 +101,7 @@ export default async function MyPage() {
         customItems={customItems}
         className={profile?.class ?? null}
         mood={profile?.mood ?? null}
+        showMood={profile?.show_mood ?? true}
         titleName={titleName}
       />
 

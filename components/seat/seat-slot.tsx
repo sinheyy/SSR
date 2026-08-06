@@ -113,6 +113,10 @@ export default function SeatSlot({
 }) {
   const [isPending, startTransition] = useTransition();
   const isMine = seat.occupant?.userId === currentUserId;
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [tooltipAnchor, setTooltipAnchor] = useState<{ bottom: number; left: number } | null>(
+    null
+  );
 
   function handleClick() {
     if (isPending) return;
@@ -125,6 +129,16 @@ export default function SeatSlot({
       }
       await sitAtSeat(seat.id);
     });
+  }
+
+  function showTooltip() {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (rect) {
+      setTooltipAnchor({
+        bottom: window.innerHeight - rect.top + 44,
+        left: rect.left + rect.width / 2,
+      });
+    }
   }
 
   if (!seat.occupant) {
@@ -142,17 +156,21 @@ export default function SeatSlot({
   const colorClass = colorForUser(seat.occupant.userId, seat.occupant.avatarColor);
 
   return (
-    <div className="relative">
-      <MoodBubble mood={seat.occupant.mood} isMine={isMine} />
+    <div ref={wrapRef} className="relative">
+      <MoodBubble
+        mood={seat.occupant.showMood ? seat.occupant.mood : null}
+        isMine={isMine}
+      />
       <button
         type="button"
         onClick={isMine ? handleClick : undefined}
-        disabled={isPending || !isMine}
+        onMouseEnter={showTooltip}
+        onMouseLeave={() => setTooltipAnchor(null)}
+        disabled={isPending}
         className={`relative flex size-7 items-center justify-center gap-1 rounded-md shadow-sm ${colorClass} ${
-          isMine ? "ring-2 ring-emerald-500" : ""
+          isMine ? "ring-2 ring-emerald-500" : "cursor-default"
         } disabled:opacity-90`}
         aria-label={`${seat.position + 1}번 자리, ${seat.occupant.name}${isMine ? " (나)" : ""}`}
-        title={seat.occupant.name}
       >
         <span className="size-1 rounded-full bg-black/50" />
         <span className="size-1 rounded-full bg-black/50" />
@@ -167,6 +185,29 @@ export default function SeatSlot({
           />
         ))}
       </button>
+      <span
+        onMouseEnter={showTooltip}
+        onMouseLeave={() => setTooltipAnchor(null)}
+        className="absolute left-1/2 top-full z-10 mt-1 w-7 -translate-x-1/2 truncate text-center text-[9px] font-medium leading-none text-zinc-600 dark:text-zinc-300"
+      >
+        {seat.occupant.name}
+      </span>
+
+      {tooltipAnchor &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              bottom: tooltipAnchor.bottom,
+              left: tooltipAnchor.left,
+              transform: "translateX(-50%)",
+            }}
+            className="pointer-events-none z-50 whitespace-nowrap rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs font-medium text-black shadow-lg dark:border-white/10 dark:bg-zinc-800 dark:text-zinc-50"
+          >
+            {seat.occupant.name}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

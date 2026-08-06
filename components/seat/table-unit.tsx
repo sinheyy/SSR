@@ -13,7 +13,7 @@ export default function TableUnit({
   const bottomSeats = table.seats.slice(half);
 
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="flex flex-col items-center gap-5">
       <div className="flex gap-1.5">
         {topSeats.map((seat) => (
           <SeatSlot key={seat.id} seat={seat} currentUserId={currentUserId} />

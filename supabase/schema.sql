@@ -577,3 +577,10 @@ create policy "feedback_update_own_unanswered" on public.feedback
 
 create policy "feedback_delete_own" on public.feedback
   for delete using (user_id = auth.uid());
+
+-- ------------------------------------------------------------
+-- (1회성) 스터디룸에 기분 상태 표시 여부 설정
+--    users_update_own 정책이 이미 있어서 본인 컬럼 수정은 그대로 허용됨.
+-- ------------------------------------------------------------
+alter table public.users
+  add column show_mood boolean default true;
