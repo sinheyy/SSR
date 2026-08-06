@@ -8,6 +8,7 @@ export default function ProfileCard({
   email,
   avatarUrl,
   avatarColor,
+  customItems,
   className,
   mood,
   titleName,
@@ -17,6 +18,7 @@ export default function ProfileCard({
   email: string | null;
   avatarUrl: string | null;
   avatarColor: string | null;
+  customItems: { image: string; x: number; y: number }[];
   className: string | null;
   mood: string | null;
   titleName: string | null;
@@ -32,11 +34,21 @@ export default function ProfileCard({
         />
       ) : (
         <div
-          className={`flex size-16 shrink-0 items-center justify-center gap-2 rounded-2xl shadow-sm ${colorForUser(userId, avatarColor)}`}
+          className={`relative flex size-16 shrink-0 items-center justify-center gap-2 rounded-2xl shadow-sm ${colorForUser(userId, avatarColor)}`}
           aria-hidden
         >
           <span className="size-2 rounded-full bg-black/50" />
           <span className="size-2 rounded-full bg-black/50" />
+          {customItems.map((item, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={i}
+              src={item.image}
+              alt=""
+              className="absolute size-9 -translate-x-1/2 -translate-y-1/2 object-contain"
+              style={{ left: `${item.x}%`, top: `${item.y}%` }}
+            />
+          ))}
         </div>
       )}
 
