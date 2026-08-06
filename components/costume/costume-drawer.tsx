@@ -148,8 +148,11 @@ export default function CostumeDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
+          <p className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            내 캐릭터
+          </p>
           <p className="mb-2 text-center text-xs text-zinc-500">
-            아이템을 드래그해서 위치를 옮겨보세요
+            착용한 아이템은 드래그해서 위치를 옮길 수 있어요
           </p>
           <CharacterPreview
             userId={userId}
@@ -160,7 +163,10 @@ export default function CostumeDrawer({
             onMove={handleMove}
           />
 
-          <div className="mt-3 flex justify-center gap-1.5">
+          <p className="mb-1.5 mt-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            캐릭터 색
+          </p>
+          <div className="mx-auto grid w-fit grid-cols-5 gap-1.5">
             {AVATAR_COLORS.map((color) => {
               const swatchClass = color.split(" ")[0]; // 라이트모드 배경색만 스와치로 표시
               return (
@@ -180,12 +186,18 @@ export default function CostumeDrawer({
 
           <div className="my-4 border-t border-black/[.08] dark:border-white/[.145]" />
 
+          <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            아이템 그리기
+          </p>
           <DrawingCanvas onSave={handleSaveDrawing} saving={saving} />
 
           <div className="my-4 border-t border-black/[.08] dark:border-white/[.145]" />
 
           <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
             내 아이템
+          </p>
+          <p className="mb-2 text-xs text-zinc-500">
+            눌러서 착용/해제 · 그린 아이템은 ✕로 삭제
           </p>
           <div className="grid grid-cols-4 gap-2">
             {items.map((item) => (
