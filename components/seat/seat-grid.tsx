@@ -1,5 +1,6 @@
 import TableUnit from "@/components/seat/table-unit";
 import RankingBoard from "@/components/seat/ranking-board";
+import StudyTimerWidget from "@/components/seat/study-timer-widget";
 import type { Rankings } from "@/components/seat/ranking-data";
 import type { TableData } from "@/components/seat/types";
 
@@ -49,6 +50,7 @@ export default function SeatGrid({
         <Window />
         <Window />
         <Window />
+        <StudyTimerWidget userId={currentUserId} />
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-10 px-8 py-10 sm:grid-cols-4">
         {tables.map((table) => (

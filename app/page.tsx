@@ -17,16 +17,6 @@ export default async function Home() {
   const { tables, error } = await fetchTables(supabase);
   const rankings = await fetchRankings(supabase);
 
-  const today = new Date().toLocaleDateString("en-CA", {
-    timeZone: "Asia/Seoul",
-  });
-  const { data: attendance } = await supabase
-    .from("attendance_logs")
-    .select("total_seconds")
-    .eq("user_id", user.id)
-    .eq("date", today)
-    .maybeSingle();
-
   return (
     <div className="flex flex-1 flex-col gap-6 bg-zinc-50 p-8 dark:bg-black">
       {error ? (
@@ -43,7 +33,6 @@ export default async function Home() {
           initialTables={tables}
           initialRankings={rankings}
           currentUserId={user.id}
-          todayBaselineSeconds={attendance?.total_seconds ?? 0}
         />
       )}
     </div>
