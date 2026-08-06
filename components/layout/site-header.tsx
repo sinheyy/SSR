@@ -21,9 +21,9 @@ export default async function SiteHeader() {
 
   return (
     <header className="flex items-center justify-between border-b border-black/[.08] px-8 py-4 dark:border-white/[.145]">
-      <Link href="/" className="relative h-8 w-32">
+      <Link href="/" className="relative h-14 w-52">
         <Image
-          src="/assets/logo.png"
+          src="/assets/logo-v2.png"
           alt="SKALA STUDY ROOM"
           fill
           className="object-contain object-left"
