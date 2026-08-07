@@ -107,9 +107,11 @@ function MoodBubble({
 export default function SeatSlot({
   seat,
   currentUserId,
+  seatingDisabled,
 }: {
   seat: SeatData;
   currentUserId: string;
+  seatingDisabled: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const isMine = seat.occupant?.userId === currentUserId;
@@ -146,9 +148,17 @@ export default function SeatSlot({
       <button
         type="button"
         onClick={handleClick}
-        disabled={isPending}
-        className="size-9 rounded-md border-2 border-dashed border-[#c9b28c] transition hover:border-[#8a6448] disabled:opacity-50 dark:border-[#5a4a34] dark:hover:border-[#c9b28c]"
-        aria-label={`${seat.position + 1}번 자리, 비어있음`}
+        disabled={isPending || seatingDisabled}
+        className={`size-9 rounded-md border-2 border-dashed transition disabled:cursor-not-allowed disabled:opacity-40 ${
+          seatingDisabled
+            ? "border-[#c9b28c] dark:border-[#5a4a34]"
+            : "border-[#c9b28c] hover:border-[#8a6448] dark:border-[#5a4a34] dark:hover:border-[#c9b28c]"
+        }`}
+        aria-label={
+          seatingDisabled
+            ? `${seat.position + 1}번 자리, 착석 불가 시간`
+            : `${seat.position + 1}번 자리, 비어있음`
+        }
       />
     );
   }

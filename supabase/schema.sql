@@ -611,3 +611,227 @@ create policy "whiteboard_update_all" on public.whiteboard
   for update using (auth.role() = 'authenticated');
 
 alter publication supabase_realtime add table public.whiteboard;
+
+-- ============================================================
+-- 15. 평일 업무시간(09:00~17:50) 공부시간 카운트 제외
+--    이 시간대는 이미 SKALA 정규 교육 시간이라 스터디룸 공부시간에
+--    안 잡히게, 착석 구간과 겹치는 부분만 정산 시 빼고 기록합니다.
+-- ============================================================
+
+create or replace function public.excluded_seconds(range_start timestamptz, range_end timestamptz)
+returns integer
+language plpgsql
+as $$
+declare
+  total_excluded integer := 0;
+  day_cursor date;
+  last_day date;
+  excl_start timestamptz;
+  excl_end timestamptz;
+  overlap_start timestamptz;
+  overlap_end timestamptz;
+begin
+  if range_end <= range_start then
+    return 0;
+  end if;
+
+  day_cursor := (range_start at time zone 'Asia/Seoul')::date;
+  last_day := (range_end at time zone 'Asia/Seoul')::date;
+
+  while day_cursor <= last_day loop
+    -- isodow: 1=월요일 ... 5=금요일, 6/7=주말
+    if extract(isodow from day_cursor) between 1 and 5 then
+      excl_start := (day_cursor + time '09:00:00') at time zone 'Asia/Seoul';
+      excl_end := (day_cursor + time '17:50:00') at time zone 'Asia/Seoul';
+
+      overlap_start := greatest(range_start, excl_start);
+      overlap_end := least(range_end, excl_end);
+
+      if overlap_end > overlap_start then
+        total_excluded := total_excluded + extract(epoch from (overlap_end - overlap_start))::integer;
+      end if;
+    end if;
+
+    day_cursor := day_cursor + 1;
+  end loop;
+
+  return total_excluded;
+end;
+$$;
+
+-- settle_current_seat / clear_seat_for_user가 정산할 때 평일 09:00~17:50과
+-- 겹치는 시간을 빼고 기록하도록 재정의
+create or replace function public.settle_current_seat()
+returns void
+language plpgsql
+security invoker
+as $$
+declare
+  since timestamptz;
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  select status_changed_at into since
+  from public.seats
+  where user_id = auth.uid() and status_changed_at is not null;
+
+  if since is null then
+    return;
+  end if;
+
+  elapsed := greatest(0, extract(epoch from (now() - since))::integer - public.excluded_seconds(since, now()));
+
+  if elapsed = 0 then
+    return;
+  end if;
+
+  insert into public.attendance_logs (user_id, date, total_seconds)
+  values (auth.uid(), today, elapsed)
+  on conflict (user_id, date)
+  do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+  update public.users
+  set total_study_seconds = total_study_seconds + elapsed
+  where id = auth.uid();
+
+  perform public.recompute_streak(auth.uid());
+end;
+$$;
+
+create or replace function public.clear_seat_for_user(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  since timestamptz;
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  select status_changed_at into since
+  from public.seats
+  where user_id = target_user_id and status_changed_at is not null;
+
+  if since is not null then
+    elapsed := greatest(0, extract(epoch from (now() - since))::integer - public.excluded_seconds(since, now()));
+
+    if elapsed > 0 then
+      insert into public.attendance_logs (user_id, date, total_seconds)
+      values (target_user_id, today, elapsed)
+      on conflict (user_id, date)
+      do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+      update public.users
+      set total_study_seconds = total_study_seconds + elapsed
+      where id = target_user_id;
+
+      perform public.recompute_streak(target_user_id);
+    end if;
+  end if;
+
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = target_user_id;
+end;
+$$;
+
+-- ============================================================
+-- 16. 평일 업무시간(09:00~17:50)에는 착석 자체를 막고, 그 시간이
+--     시작되는 시점에 이미 앉아있던 사람은 자동으로 퇴장시킵니다.
+-- ============================================================
+
+create or replace function public.is_within_excluded_hours()
+returns boolean
+language plpgsql
+as $$
+declare
+  seoul_now timestamp := now() at time zone 'Asia/Seoul';
+begin
+  return extract(isodow from seoul_now) between 1 and 5
+    and seoul_now::time >= time '09:00:00'
+    and seoul_now::time < time '17:50:00';
+end;
+$$;
+
+-- sit_at_seat: 업무시간에는 착석 자체를 거부
+create or replace function public.sit_at_seat(target_seat_id uuid)
+returns void
+language plpgsql
+security invoker
+as $$
+begin
+  if public.is_within_excluded_hours() then
+    raise exception '평일 09:00~17:50에는 착석할 수 없습니다';
+  end if;
+
+  -- 자리를 옮기는 경우, 기존 자리에 앉아있던 시간부터 정산
+  perform public.settle_current_seat();
+
+  -- 기존에 앉아있던 자리가 있으면 비우기
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = auth.uid();
+
+  -- 새 자리에 착석 (이미 다른 사람이 앉아있으면 실패)
+  update public.seats
+  set user_id = auth.uid(), status_changed_at = now()
+  where id = target_seat_id and user_id is null;
+
+  if not found then
+    raise exception '이미 다른 사람이 앉아있는 자리입니다';
+  end if;
+end;
+$$;
+
+-- 업무시간이 시작되는 시점에 이미 앉아있던 사람들을 정산 후 일괄 퇴장.
+-- 클라이언트가 업무시간 진입을 감지했을 때 호출 — 이미 비어있으면
+-- 그냥 아무 일도 안 하니 여러 클라이언트가 동시에 불러도 안전합니다.
+create or replace function public.clear_seats_for_excluded_hours()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  occupied record;
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  if not public.is_within_excluded_hours() then
+    return;
+  end if;
+
+  for occupied in
+    select user_id, status_changed_at
+    from public.seats
+    where user_id is not null and status_changed_at is not null
+  loop
+    elapsed := greatest(
+      0,
+      extract(epoch from (now() - occupied.status_changed_at))::integer
+        - public.excluded_seconds(occupied.status_changed_at, now())
+    );
+
+    if elapsed > 0 then
+      insert into public.attendance_logs (user_id, date, total_seconds)
+      values (occupied.user_id, today, elapsed)
+      on conflict (user_id, date)
+      do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+      update public.users
+      set total_study_seconds = total_study_seconds + elapsed
+      where id = occupied.user_id;
+
+      perform public.recompute_streak(occupied.user_id);
+    end if;
+  end loop;
+
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id is not null;
+end;
+$$;
+
+grant execute on function public.is_within_excluded_hours() to authenticated;
+grant execute on function public.clear_seats_for_excluded_hours() to authenticated;
