@@ -147,7 +147,7 @@ export default function SeatSlot({
         type="button"
         onClick={handleClick}
         disabled={isPending}
-        className="size-7 rounded-md border-2 border-dashed border-[#c9b28c] transition hover:border-[#8a6448] disabled:opacity-50 dark:border-[#5a4a34] dark:hover:border-[#c9b28c]"
+        className="size-9 rounded-md border-2 border-dashed border-[#c9b28c] transition hover:border-[#8a6448] disabled:opacity-50 dark:border-[#5a4a34] dark:hover:border-[#c9b28c]"
         aria-label={`${seat.position + 1}번 자리, 비어있음`}
       />
     );
@@ -167,20 +167,20 @@ export default function SeatSlot({
         onMouseEnter={showTooltip}
         onMouseLeave={() => setTooltipAnchor(null)}
         disabled={isPending}
-        className={`relative flex size-7 items-center justify-center gap-1 rounded-md shadow-sm ${colorClass} ${
+        className={`relative flex size-9 items-center justify-center gap-1.5 rounded-md shadow-sm ${colorClass} ${
           isMine ? "ring-2 ring-emerald-500" : "cursor-default"
         } disabled:opacity-90`}
         aria-label={`${seat.position + 1}번 자리, ${seat.occupant.name}${isMine ? " (나)" : ""}`}
       >
-        <span className="size-1 rounded-full bg-black/50" />
-        <span className="size-1 rounded-full bg-black/50" />
+        <span className="size-1.5 rounded-full bg-black/50" />
+        <span className="size-1.5 rounded-full bg-black/50" />
         {seat.occupant.customItems?.map((item, i) => (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             key={i}
             src={item.image}
             alt=""
-            className="absolute size-4 -translate-x-1/2 -translate-y-1/2 object-contain"
+            className="absolute size-5 -translate-x-1/2 -translate-y-1/2 object-contain"
             style={{ left: `${item.x}%`, top: `${item.y}%` }}
           />
         ))}
@@ -188,7 +188,7 @@ export default function SeatSlot({
       <span
         onMouseEnter={showTooltip}
         onMouseLeave={() => setTooltipAnchor(null)}
-        className="absolute left-1/2 top-full z-10 mt-1 w-7 -translate-x-1/2 truncate text-center text-[9px] font-medium leading-none text-zinc-600 dark:text-zinc-300"
+        className="absolute left-1/2 top-full z-10 mt-1 w-9 -translate-x-1/2 truncate text-center text-[9px] font-medium leading-none text-zinc-600 dark:text-zinc-300"
       >
         {seat.occupant.name}
       </span>
