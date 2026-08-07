@@ -27,6 +27,7 @@ export default function WhiteboardModal({
     const img = new Image();
     img.onload = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.globalCompositeOperation = "source-over"; // 지우개 모드가 남아있으면 이 그림이 안 그려짐
       ctx.drawImage(img, 0, 0);
     };
     img.src = dataUrl;
