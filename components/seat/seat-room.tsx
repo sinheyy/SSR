@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { clearSeatForUser } from "@/components/seat/actions";
+import { clearSeatForUser, clearSeatsForExcludedHours } from "@/components/seat/actions";
 import { fetchTables } from "@/components/seat/data";
 import { fetchRankings } from "@/components/seat/ranking-data";
+import { isWithinExcludedHours } from "@/lib/study-time";
 import SeatGrid from "@/components/seat/seat-grid";
 import type { TableData } from "@/components/seat/types";
 import type { Rankings } from "@/components/seat/ranking-data";
+
+const EXCLUDED_HOURS_POLL_MS = 30_000;
 
 export default function SeatRoom({
   initialTables,
@@ -20,6 +23,28 @@ export default function SeatRoom({
 }) {
   const [tables, setTables] = useState(initialTables);
   const [rankings, setRankings] = useState(initialRankings);
+  const [seatingDisabled, setSeatingDisabled] = useState(() =>
+    isWithinExcludedHours()
+  );
+
+  useEffect(() => {
+    if (seatingDisabled) {
+      clearSeatsForExcludedHours().catch(() => {});
+    }
+
+    const interval = setInterval(() => {
+      const now = isWithinExcludedHours();
+      setSeatingDisabled((prev) => {
+        if (!prev && now) {
+          clearSeatsForExcludedHours().catch(() => {});
+        }
+        return now;
+      });
+    }, EXCLUDED_HOURS_POLL_MS);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -67,6 +92,7 @@ export default function SeatRoom({
       tables={tables}
       currentUserId={currentUserId}
       rankings={rankings}
+      seatingDisabled={seatingDisabled}
     />
   );
 }

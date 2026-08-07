@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { excludedMsBetween } from "@/lib/study-time";
 
 function formatDuration(totalSeconds: number) {
   const hours = Math.floor(totalSeconds / 3600);
@@ -28,10 +29,13 @@ export default function StudyTimer({
     }
 
     const sinceMs = new Date(sittingSince).getTime();
-    const tick = () =>
-      setLiveSeconds(
-        todayBaselineSeconds + Math.max(0, Math.floor((Date.now() - sinceMs) / 1000))
-      );
+    const tick = () => {
+      const now = Date.now();
+      const rawMs = Math.max(0, now - sinceMs);
+      const excludedMs = excludedMsBetween(sinceMs, now);
+      const netSeconds = Math.max(0, Math.floor((rawMs - excludedMs) / 1000));
+      setLiveSeconds(todayBaselineSeconds + netSeconds);
+    };
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);

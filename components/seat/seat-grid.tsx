@@ -27,10 +27,12 @@ export default function SeatGrid({
   tables,
   currentUserId,
   rankings,
+  seatingDisabled,
 }: {
   tables: TableData[];
   currentUserId: string;
   rankings: Rankings;
+  seatingDisabled: boolean;
 }) {
   return (
     <div className="overflow-hidden rounded-3xl border border-[#c9b28c] bg-[#f0e4d0] shadow-sm dark:border-[#4a3d2a] dark:bg-[#3a2f20]">
@@ -53,9 +55,19 @@ export default function SeatGrid({
         <Window />
         <StudyTimerWidget userId={currentUserId} />
       </div>
+      {seatingDisabled && (
+        <p className="bg-amber-100 px-8 py-2 text-center text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+          평일 09:00~17:50에는 착석할 수 없어요
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-x-4 gap-y-10 px-8 py-10 sm:grid-cols-4">
         {tables.map((table) => (
-          <TableUnit key={table.id} table={table} currentUserId={currentUserId} />
+          <TableUnit
+            key={table.id}
+            table={table}
+            currentUserId={currentUserId}
+            seatingDisabled={seatingDisabled}
+          />
         ))}
       </div>
       <div className="flex items-end justify-between px-6 pb-4">
