@@ -1,25 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { DRAW_COLORS } from "@/lib/draw-colors";
 
 const SIZE = 96;
-// 무채색 4개 + 무지개 순서 10개 = 14개, 7칸씩 2줄로 깔끔하게 배치
-const COLORS = [
-  "#000000",
-  "#ffffff",
-  "#6b7280",
-  "#7c2d12",
-  "#ef4444",
-  "#f97316",
-  "#f59e0b",
-  "#eab308",
-  "#22c55e",
-  "#14b8a6",
-  "#3b82f6",
-  "#6366f1",
-  "#a855f7",
-  "#ec4899",
-];
 
 export default function DrawingCanvas({
   onSave,
@@ -30,7 +14,7 @@ export default function DrawingCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
-  const [color, setColor] = useState(COLORS[0]);
+  const [color, setColor] = useState(DRAW_COLORS[0]);
 
   function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -88,7 +72,7 @@ export default function DrawingCanvas({
         className="touch-none rounded-md border border-black/[.08] bg-white dark:border-white/[.145]"
       />
       <div className="grid w-fit grid-cols-7 gap-1">
-        {COLORS.map((c) => (
+        {DRAW_COLORS.map((c) => (
           <button
             key={c}
             onClick={() => setColor(c)}
