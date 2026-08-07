@@ -16,6 +16,7 @@ export default function AdminItemsPanel({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [editingItem, setEditingItem] = useState<EditableItem | null>(null);
+  const [formResetKey, setFormResetKey] = useState(0);
 
   async function handleDelete(id: string) {
     const { error } = await supabase.rpc("delete_item", { target_item_id: id });
@@ -30,10 +31,13 @@ export default function AdminItemsPanel({
   return (
     <>
       <ItemForm
-        key={editingItem?.id ?? "new"}
+        key={editingItem?.id ?? `new-${formResetKey}`}
         item={editingItem}
         users={users}
-        onDone={() => setEditingItem(null)}
+        onDone={() => {
+          setEditingItem(null);
+          setFormResetKey((k) => k + 1);
+        }}
       />
       <ItemList items={items} onEdit={setEditingItem} onDelete={handleDelete} />
     </>
