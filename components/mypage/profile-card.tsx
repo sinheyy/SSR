@@ -12,7 +12,6 @@ export default function ProfileCard({
   className,
   mood,
   showMood,
-  titleName,
 }: {
   userId: string;
   name: string;
@@ -23,7 +22,6 @@ export default function ProfileCard({
   className: string | null;
   mood: string | null;
   showMood: boolean;
-  titleName: string | null;
 }) {
   return (
     <div className="flex items-center gap-5 rounded-2xl border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">
@@ -59,11 +57,6 @@ export default function ProfileCard({
           <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
             {name}
           </h2>
-          {titleName && (
-            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-              {titleName}
-            </span>
-          )}
         </div>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">{email}</p>
         {className && (

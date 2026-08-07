@@ -40,12 +40,20 @@ export default async function SiteHeader() {
               문의하기
             </Link>
             {isAdmin && (
-              <Link
-                href="/admin/feedback"
-                className="font-medium text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
-              >
-                문의 관리
-              </Link>
+              <>
+                <Link
+                  href="/admin/feedback"
+                  className="font-medium text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
+                >
+                  문의 관리
+                </Link>
+                <Link
+                  href="/admin/items"
+                  className="font-medium text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
+                >
+                  아이템 관리
+                </Link>
+              </>
             )}
             <Link
               href="/mypage"

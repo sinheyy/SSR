@@ -37,7 +37,7 @@ export default async function MyPage() {
     supabase
       .from("users")
       .select(
-        "name, email, avatar_url, avatar_color, worn_items, class, mood, show_mood, total_study_seconds, streak_days, titles(name)"
+        "name, email, avatar_url, avatar_color, worn_items, class, mood, show_mood, total_study_seconds, streak_days"
       )
       .eq("id", user.id)
       .single(),
@@ -81,11 +81,6 @@ export default async function MyPage() {
     isToday: day.date === todayStr,
   }));
 
-  const equippedTitle = profile?.titles as { name: string } | { name: string }[] | null;
-  const titleName = Array.isArray(equippedTitle)
-    ? (equippedTitle[0]?.name ?? null)
-    : (equippedTitle?.name ?? null);
-
   return (
     <div className="flex flex-1 flex-col gap-6 bg-zinc-50 p-8 dark:bg-black">
       <h1 className="text-2xl font-semibold tracking-tight text-black dark:text-zinc-50">
@@ -102,7 +97,6 @@ export default async function MyPage() {
         className={profile?.class ?? null}
         mood={profile?.mood ?? null}
         showMood={profile?.show_mood ?? true}
-        titleName={titleName}
       />
 
       <StatsPanel
