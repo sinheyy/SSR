@@ -1,6 +1,7 @@
 import TableUnit from "@/components/seat/table-unit";
 import RankingBoard from "@/components/seat/ranking-board";
 import StudyTimerWidget from "@/components/seat/study-timer-widget";
+import WhiteboardIcon from "@/components/whiteboard/whiteboard-icon";
 import type { Rankings } from "@/components/seat/ranking-data";
 import type { TableData } from "@/components/seat/types";
 
@@ -50,7 +51,7 @@ export default function SeatGrid({
           entries={rankings.byStreak}
         />
         <Window />
-        <Window />
+        <WhiteboardIcon />
         <Window />
         <StudyTimerWidget userId={currentUserId} />
       </div>

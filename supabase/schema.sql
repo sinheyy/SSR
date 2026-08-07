@@ -585,6 +585,33 @@ create policy "feedback_delete_own" on public.feedback
 alter table public.users
   add column show_mood boolean default true;
 
+-- ------------------------------------------------------------
+-- 벽에 걸린 화이트보드 : 스터디룸 전체가 함께 쓰는 단일 캔버스
+--    Storage 버킷 없이 base64 PNG를 텍스트로 저장 (코디템 그리기와 동일한
+--    방식). 여러 명이 동시에 그릴 때는 그림을 다 그리고 손을 뗀 시점(획이
+--    끝날 때)마다 캔버스 전체를 덮어써서 저장하는 방식이라, 두 명이 정확히
+--    같은 순간에 그리면 나중에 저장한 사람이 이긴다 — 소규모 인원 캐주얼
+--    낙서용이라 이 정도로 충분하다고 판단. 동시 편집 충돌이 실제로 문제되면
+--    획 단위 Realtime Broadcast로 업그레이드 검토.
+-- ------------------------------------------------------------
+
+create table public.whiteboard (
+  id text primary key default 'main',
+  image text,
+  updated_at timestamptz default now()
+);
+
+insert into public.whiteboard (id, image) values ('main', null);
+
+alter table public.whiteboard enable row level security;
+
+create policy "whiteboard_select_all" on public.whiteboard
+  for select using (auth.role() = 'authenticated');
+create policy "whiteboard_update_all" on public.whiteboard
+  for update using (auth.role() = 'authenticated');
+
+alter publication supabase_realtime add table public.whiteboard;
+
 -- ============================================================
 -- 15. 평일 업무시간(09:00~17:50) 공부시간 카운트 제외
 --    이 시간대는 이미 SKALA 정규 교육 시간이라 스터디룸 공부시간에
