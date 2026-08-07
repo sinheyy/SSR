@@ -8,14 +8,14 @@ export default function CharacterPreview({
   userId,
   avatarColor,
   wornItems,
-  customImages,
+  itemImages,
   catalogNames,
   onMove,
 }: {
   userId: string;
   avatarColor: string | null;
   wornItems: WornItem[];
-  customImages: Map<string, string>;
+  itemImages: Map<string, string>;
   catalogNames: Map<string, string>;
   onMove: (index: number, x: number, y: number) => void;
 }) {
@@ -79,8 +79,7 @@ export default function CharacterPreview({
 
       {wornItems.map((worn, index) => {
         const pos = draggingIndex === index && dragPos ? dragPos : worn;
-        const image =
-          worn.source === "custom" ? customImages.get(worn.item_id) : null;
+        const image = itemImages.get(worn.item_id);
 
         return (
           <div

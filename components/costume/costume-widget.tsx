@@ -17,7 +17,7 @@ export default async function CostumeWidget() {
         .select("unlocked_items, worn_items, avatar_color")
         .eq("id", user.id)
         .single(),
-      supabase.from("items").select("id, name, unlock_condition"),
+      supabase.from("items").select("id, name, image, unlock_condition"),
       supabase
         .from("custom_items")
         .select("id, image, created_at")

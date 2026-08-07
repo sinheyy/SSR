@@ -10,6 +10,7 @@ import type { WornItem } from "@/components/costume/types";
 type CatalogItem = {
   id: string;
   name: string;
+  image: string | null;
   unlock_condition: unknown;
 };
 
@@ -114,7 +115,12 @@ export default function CostumeDrawer({
       item.unlock_condition === null || unlockedItemIds.includes(item.id)
   );
 
-  const customImages = new Map(items.map((item) => [item.id, item.image]));
+  const itemImages = new Map<string, string>([
+    ...items.map((item) => [item.id, item.image] as const),
+    ...catalogItems
+      .filter((item) => item.image)
+      .map((item) => [item.id, item.image as string] as const),
+  ]);
   const catalogNames = new Map(
     catalogItems.map((item) => [item.id, item.name])
   );
@@ -158,7 +164,7 @@ export default function CostumeDrawer({
             userId={userId}
             avatarColor={avatarColor}
             wornItems={wornItems}
-            customImages={customImages}
+            itemImages={itemImages}
             catalogNames={catalogNames}
             onMove={handleMove}
           />
@@ -230,13 +236,19 @@ export default function CostumeDrawer({
               <button
                 key={item.id}
                 onClick={() => toggleWorn("catalog", item.id)}
-                className={`flex size-14 items-center justify-center rounded-md border-2 p-1 text-center text-[10px] leading-tight ${
+                title={item.name}
+                className={`flex size-14 items-center justify-center overflow-hidden rounded-md border-2 p-1 text-center text-[10px] leading-tight ${
                   isWorn("catalog", item.id)
                     ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30"
                     : "border-black/[.08] dark:border-white/[.145]"
                 }`}
               >
-                {item.name}
+                {item.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.image} alt={item.name} className="size-full object-contain" />
+                ) : (
+                  item.name
+                )}
               </button>
             ))}
           </div>

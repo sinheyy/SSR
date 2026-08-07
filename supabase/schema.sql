@@ -426,8 +426,51 @@ $$;
 
 grant execute on function public.recompute_streak(uuid) to authenticated;
 
+-- 조건 달성형(streak/total_hours) 아이템 자동 해금.
+-- streak_days/total_study_seconds가 바뀌는 시점(정산 시)마다 호출해서,
+-- 조건을 만족하는데 아직 unlocked_items에 없는 아이템을 채워준다.
+-- (아이템이 새로 만들어지거나 조건이 나중에 바뀌는 경우까지는 커버하지
+-- 않음 — 그런 경우는 다음 정산 때 자연스럽게 잡힘)
+create or replace function public.check_unlocks(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cur_streak integer;
+  cur_seconds integer;
+  cur_unlocked uuid[];
+  newly_unlocked uuid[];
+begin
+  select streak_days, total_study_seconds, unlocked_items
+  into cur_streak, cur_seconds, cur_unlocked
+  from public.users
+  where id = target_user_id;
+
+  select array_agg(id) into newly_unlocked
+  from public.items
+  where not (id = any(cur_unlocked))
+    and (
+      (unlock_condition->>'type' = 'streak'
+        and cur_streak >= (unlock_condition->>'value')::int)
+      or
+      (unlock_condition->>'type' = 'total_hours'
+        and cur_seconds >= (unlock_condition->>'value')::int * 3600)
+    );
+
+  if newly_unlocked is not null then
+    update public.users
+    set unlocked_items = unlocked_items || newly_unlocked
+    where id = target_user_id;
+  end if;
+end;
+$$;
+
+grant execute on function public.check_unlocks(uuid) to authenticated;
+
 -- settle_current_seat / clear_seat_for_user가 attendance_logs를 갱신한
--- 직후 streak도 같이 재계산하도록 재정의
+-- 직후 streak/아이템 해금도 같이 재계산하도록 재정의
 create or replace function public.settle_current_seat()
 returns void
 language plpgsql
@@ -456,6 +499,7 @@ begin
   where id = auth.uid();
 
   perform public.recompute_streak(auth.uid());
+  perform public.check_unlocks(auth.uid());
 end;
 $$;
 
@@ -485,6 +529,7 @@ begin
     where id = target_user_id;
 
     perform public.recompute_streak(target_user_id);
+    perform public.check_unlocks(target_user_id);
   end if;
 
   update public.seats
@@ -611,3 +656,107 @@ create policy "whiteboard_update_all" on public.whiteboard
   for update using (auth.role() = 'authenticated');
 
 alter publication supabase_realtime add table public.whiteboard;
+
+-- ------------------------------------------------------------
+-- 명예형 아이템 : 관리자가 그려서 만드는 코디템
+--    조건 달성형(스트릭 등 조건 충족 시 자동 해금)과 지급형(조건 없이
+--    특정 유저에게 직접 지급) 두 가지로 만든다. 지급형은 unlock_condition을
+--    null이 아닌 {"type":"manual"}로 넣어서 "condition null = 전체 공개"
+--    필터에 걸리지 않게 하고, 실제 지급은 grant_item()으로 그 유저의
+--    unlocked_items에 직접 넣어준다.
+-- ------------------------------------------------------------
+
+alter table public.items
+  add column image text; -- data:image/png;base64,... (없으면 기존처럼 텍스트 칩으로 표시)
+
+create policy "items_insert_admin" on public.items
+  for insert with check (
+    exists (
+      select 1 from public.users where id = auth.uid() and is_admin = true
+    )
+  );
+
+create policy "items_update_admin" on public.items
+  for update using (
+    exists (
+      select 1 from public.users where id = auth.uid() and is_admin = true
+    )
+  );
+
+create policy "items_delete_admin" on public.items
+  for delete using (
+    exists (
+      select 1 from public.users where id = auth.uid() and is_admin = true
+    )
+  );
+
+-- 아이템 삭제 시 이미 착용/해금한 유저들에게 남는 유령 참조까지 같이 정리.
+-- 단순 delete만 하면 worn_items/unlocked_items에 죽은 id가 남아서 캐릭터
+-- 위에 "아이템"이라는 이름 없는 텍스트 뱃지가 계속 떠 있게 됨.
+create or replace function public.delete_item(target_item_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from public.users where id = auth.uid() and is_admin = true) then
+    raise exception '관리자만 아이템을 삭제할 수 있습니다';
+  end if;
+
+  update public.users
+  set worn_items = (
+    select coalesce(jsonb_agg(elem), '[]'::jsonb)
+    from jsonb_array_elements(worn_items) elem
+    where not (
+      elem->>'source' = 'catalog'
+      and elem->>'item_id' = target_item_id::text
+    )
+  )
+  where true; -- Supabase가 WHERE 없는 UPDATE를 막아서 문법상 채움(전체 대상 의도 유지)
+
+  update public.users
+  set unlocked_items = array_remove(unlocked_items, target_item_id)
+  where true;
+
+  delete from public.items where id = target_item_id;
+end;
+$$;
+
+grant execute on function public.delete_item(uuid) to authenticated;
+
+-- 관리자가 특정 유저에게 아이템을 직접 지급 (unlocked_items에 추가).
+-- users_update_own 정책으로는 남의 행을 못 고치므로 security definer로 우회.
+create or replace function public.grant_item(target_user_id uuid, target_item_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from public.users where id = auth.uid() and is_admin = true) then
+    raise exception '관리자만 아이템을 지급할 수 있습니다';
+  end if;
+
+  update public.users
+  set unlocked_items = array_append(unlocked_items, target_item_id)
+  where id = target_user_id
+    and not (target_item_id = any(unlocked_items));
+end;
+$$;
+
+grant execute on function public.grant_item(uuid, uuid) to authenticated;
+
+-- ------------------------------------------------------------
+-- 칭호(titles) 시스템 제거
+--    titles.linked_item_id가 items를 FK로 참조하고 있어서 관리자가
+--    아이템을 지우려 할 때 칭호에 연결된 것들만 막히는 문제가 있었음.
+--    칭호 자체를 없애기로 해서 관련 컬럼/테이블을 통째로 정리.
+--    equipped_title 컬럼을 먼저 지워야 그 FK가 같이 없어지고, 그 다음
+--    titles 테이블을 지우면 linked_item_id FK도 같이 사라져서 items
+--    삭제가 더 이상 칭호 때문에 막히지 않음.
+-- ------------------------------------------------------------
+
+alter table public.users drop column if exists equipped_title;
+alter table public.users drop column if exists earned_titles;
+drop table if exists public.titles;
