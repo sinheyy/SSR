@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import DrawingCanvas from "@/components/costume/drawing-canvas";
 import SegmentedControl from "@/components/admin-items/segmented-control";
+import UserMultiSelect from "@/components/admin-items/user-multi-select";
 
 type ConditionType = "streak" | "total_hours";
 type Mode = "condition" | "grant";
@@ -44,7 +45,7 @@ export default function ItemForm({
   const [conditionValue, setConditionValue] = useState(
     item?.unlock_condition?.value ?? 3
   );
-  const [targetUserId, setTargetUserId] = useState("");
+  const [targetUserIds, setTargetUserIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,13 +87,17 @@ export default function ItemForm({
       itemId = newItem.id;
     }
 
-    if (mode === "grant" && targetUserId && itemId) {
-      const { error: grantError } = await supabase.rpc("grant_item", {
-        target_user_id: targetUserId,
-        target_item_id: itemId,
-      });
-      if (grantError) {
-        setError("저장은 됐지만 지급에 실패했어요");
+    if (mode === "grant" && targetUserIds.length > 0 && itemId) {
+      const results = await Promise.all(
+        targetUserIds.map((targetUserId) =>
+          supabase.rpc("grant_item", {
+            target_user_id: targetUserId,
+            target_item_id: itemId,
+          })
+        )
+      );
+      if (results.some((r) => r.error)) {
+        setError("저장은 됐지만 일부 유저 지급에 실패했어요");
         setSaving(false);
         return;
       }
@@ -175,21 +180,14 @@ export default function ItemForm({
           </label>
         </div>
       ) : (
-        <label className="flex flex-col gap-1 text-sm text-zinc-700 dark:text-zinc-300">
+        <div className="flex flex-col gap-1 text-sm text-zinc-700 dark:text-zinc-300">
           누구에게 줄까요? {isEditing && "(선택 안 하면 기존 지급 상태 유지)"}
-          <select
-            value={targetUserId}
-            onChange={(e) => setTargetUserId(e.target.value)}
-            className="rounded-md border border-black/[.08] bg-transparent px-3 py-2 text-sm text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
-          >
-            <option value="">유저 선택</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          <UserMultiSelect
+            users={users}
+            selectedIds={targetUserIds}
+            onChange={setTargetUserIds}
+          />
+        </div>
       )}
 
       {error && <p className="text-xs text-red-500">{error}</p>}

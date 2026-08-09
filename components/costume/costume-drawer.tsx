@@ -5,7 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { AVATAR_COLORS } from "@/lib/avatar-color";
 import DrawingCanvas from "@/components/costume/drawing-canvas";
 import CharacterPreview from "@/components/costume/character-preview";
+import SegmentedControl from "@/components/admin-items/segmented-control";
 import type { WornItem } from "@/components/costume/types";
+
+type ItemTab = "custom" | "reward";
 
 type CatalogItem = {
   id: string;
@@ -40,6 +43,7 @@ export default function CostumeDrawer({
   const [wornItems, setWornItems] = useState(initialWornItems);
   const [avatarColor, setAvatarColor] = useState(initialAvatarColor);
   const [saving, setSaving] = useState(false);
+  const [itemTab, setItemTab] = useState<ItemTab>("custom");
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -199,63 +203,93 @@ export default function CostumeDrawer({
 
           <div className="my-4 border-t border-black/[.08] dark:border-white/[.145]" />
 
-          <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            내 아이템
-          </p>
-          <p className="mb-2 text-xs text-zinc-500">
-            눌러서 착용/해제 · 그린 아이템은 ✕로 삭제
-          </p>
-          <div className="grid grid-cols-4 gap-2">
-            {items.map((item) => (
-              <div key={item.id} className="relative">
-                <button
-                  onClick={() => toggleWorn("custom", item.id)}
-                  className={`size-14 overflow-hidden rounded-md border-2 ${
-                    isWorn("custom", item.id)
-                      ? "border-emerald-500"
-                      : "border-black/[.08] dark:border-white/[.145]"
-                  }`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={item.image}
-                    alt="내가 그린 아이템"
-                    className="size-full object-contain"
-                  />
-                </button>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  aria-label="아이템 삭제"
-                  className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-zinc-700 text-[9px] text-white hover:bg-red-600"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-            {availableRewardItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => toggleWorn("catalog", item.id)}
-                title={item.name}
-                className={`flex size-14 items-center justify-center overflow-hidden rounded-md border-2 p-1 text-center text-[10px] leading-tight ${
-                  isWorn("catalog", item.id)
-                    ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30"
-                    : "border-black/[.08] dark:border-white/[.145]"
-                }`}
-              >
-                {item.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.image} alt={item.name} className="size-full object-contain" />
-                ) : (
-                  item.name
-                )}
-              </button>
-            ))}
-          </div>
-          {items.length === 0 && availableRewardItems.length === 0 && (
-            <p className="text-sm text-zinc-500">
-              아직 보유한 아이템이 없어요
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              아이템
             </p>
+            <SegmentedControl
+              value={itemTab}
+              onChange={setItemTab}
+              options={[
+                { value: "custom", label: "내 아이템" },
+                { value: "reward", label: "보상 아이템" },
+              ]}
+            />
+          </div>
+
+          {itemTab === "custom" ? (
+            <>
+              <p className="mb-2 text-xs text-zinc-500">
+                눌러서 착용/해제 · 그린 아이템은 ✕로 삭제
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {items.map((item) => (
+                  <div key={item.id} className="relative">
+                    <button
+                      onClick={() => toggleWorn("custom", item.id)}
+                      className={`size-14 overflow-hidden rounded-md border-2 ${
+                        isWorn("custom", item.id)
+                          ? "border-emerald-500"
+                          : "border-black/[.08] dark:border-white/[.145]"
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.image}
+                        alt="내가 그린 아이템"
+                        className="size-full object-contain"
+                      />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      aria-label="아이템 삭제"
+                      className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-zinc-700 text-[9px] text-white hover:bg-red-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {items.length === 0 && (
+                <p className="text-sm text-zinc-500">
+                  아직 그린 아이템이 없어요
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="mb-2 text-xs text-zinc-500">
+                눌러서 착용/해제
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {availableRewardItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleWorn("catalog", item.id)}
+                    title={item.name}
+                    className={`flex size-14 items-center justify-center overflow-hidden rounded-md border-2 p-1 text-center text-[10px] leading-tight ${
+                      isWorn("catalog", item.id)
+                        ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30"
+                        : "border-black/[.08] dark:border-white/[.145]"
+                    }`}
+                  >
+                    {item.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.image} alt={item.name} className="size-full object-contain" />
+                    ) : (
+                      item.name
+                    )}
+                  </button>
+                ))}
+              </div>
+              {availableRewardItems.length === 0 && (
+                <p className="py-8 text-center text-sm text-zinc-500">
+                  ✨ 숨겨진 미션을 달성해서
+                  <br />
+                  특별한 아이템을 받아보세요!
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
