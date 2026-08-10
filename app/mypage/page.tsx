@@ -52,23 +52,39 @@ export default async function MyPage() {
   const customItemIds = wornItems
     .filter((worn) => worn.source === "custom")
     .map((worn) => worn.item_id);
+  const catalogItemIds = wornItems
+    .filter((worn) => worn.source === "catalog")
+    .map((worn) => worn.item_id);
 
-  let customItems: { image: string; x: number; y: number }[] = [];
+  // custom(직접 그린 것)과 catalog(스트릭 해금/관리자 지급 명예형) 두 소스의
+  // 이미지를 하나의 맵으로 합쳐야 착용 중인 아이템이 소스에 상관없이 다 보임
+  const imageById = new Map<string, string>();
   if (customItemIds.length > 0) {
     const { data: images } = await supabase
       .from("custom_items")
       .select("id, image")
       .in("id", customItemIds);
-    const imageById = new Map((images ?? []).map((row) => [row.id, row.image]));
-    customItems = wornItems
-      .filter((worn) => worn.source === "custom")
-      .map((worn) => ({
-        image: imageById.get(worn.item_id) ?? "",
-        x: worn.x,
-        y: worn.y,
-      }))
-      .filter((item) => item.image);
+    for (const row of images ?? []) {
+      imageById.set(row.id, row.image);
+    }
   }
+  if (catalogItemIds.length > 0) {
+    const { data: images } = await supabase
+      .from("items")
+      .select("id, image")
+      .in("id", catalogItemIds);
+    for (const row of images ?? []) {
+      if (row.image) imageById.set(row.id, row.image);
+    }
+  }
+
+  const customItems = wornItems
+    .map((worn) => ({
+      image: imageById.get(worn.item_id) ?? "",
+      x: worn.x,
+      y: worn.y,
+    }))
+    .filter((item) => item.image);
 
   const secondsByDate = new Map(
     (attendance ?? []).map((row) => [row.date, row.total_seconds ?? 0])
