@@ -34,6 +34,14 @@ export default function SeatGrid({
   rankings: Rankings;
   seatingDisabled: boolean;
 }) {
+  // 공부 타이머가 쓰는 "내 착석 시각". 이미 tables에 들어있는 값이라
+  // StudyTimerWidget이 seats를 따로 구독/조회할 필요가 없다.
+  const mySittingSince =
+    tables
+      .flatMap((table) => table.seats)
+      .find((seat) => seat.occupant?.userId === currentUserId)?.occupant
+      ?.sittingSince ?? null;
+
   return (
     <div className="overflow-hidden rounded-3xl border border-[#c9b28c] bg-[#f0e4d0] shadow-sm dark:border-[#4a3d2a] dark:bg-[#3a2f20]">
       <div className="flex items-center justify-around border-b border-[#c9b28c] bg-[#d9c6a0] px-8 py-7 dark:border-[#4a3d2a] dark:bg-[#4a3d2a]">
@@ -53,7 +61,10 @@ export default function SeatGrid({
         <Window />
         <WhiteboardIcon />
         <Window />
-        <StudyTimerWidget userId={currentUserId} />
+        <StudyTimerWidget
+          userId={currentUserId}
+          sittingSince={mySittingSince}
+        />
       </div>
       {seatingDisabled && (
         <p className="bg-amber-100 px-8 py-2 text-center text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
