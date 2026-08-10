@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { clearSeatForUser, clearSeatsForExcludedHours } from "@/components/seat/actions";
+import {
+  clearSeatForUser,
+  clearSeatsForExcludedHours,
+  heartbeatSeat,
+} from "@/components/seat/actions";
 import { fetchTables } from "@/components/seat/data";
 import { fetchRankings } from "@/components/seat/ranking-data";
 import { isWithinExcludedHours } from "@/lib/study-time";
@@ -11,6 +15,7 @@ import type { TableData } from "@/components/seat/types";
 import type { Rankings } from "@/components/seat/ranking-data";
 
 const EXCLUDED_HOURS_POLL_MS = 30_000;
+const HEARTBEAT_INTERVAL_MS = 30_000;
 
 export default function SeatRoom({
   initialTables,
@@ -44,6 +49,18 @@ export default function SeatRoom({
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 좌석에 앉아있는 동안 살아있다는 신호를 서버에 주기적으로 보낸다.
+  // presence leave를 목격해줄 다른 클라이언트가 없어서 탭을 그냥 닫아도
+  // 좌석이 영원히 안 비워지는 문제의 백스톱 — 이 신호가 3분 넘게 끊기면
+  // 서버(pg_cron)가 자동으로 좌석을 정리한다.
+  useEffect(() => {
+    heartbeatSeat().catch(() => {});
+    const interval = setInterval(() => {
+      heartbeatSeat().catch(() => {});
+    }, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
