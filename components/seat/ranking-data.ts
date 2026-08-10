@@ -35,7 +35,6 @@ function toCustomItems(
   images: Map<string, string>
 ) {
   return (wornItems ?? [])
-    .filter((worn) => worn.source === "custom")
     .map((worn) => ({
       image: images.get(worn.item_id) ?? "",
       x: worn.x,
@@ -65,15 +64,26 @@ export async function fetchRankings(
   const byTimeRows = (byTime ?? []) as unknown as TimeRow[];
   const byStreakRows = (byStreak ?? []) as unknown as StreakRow[];
 
+  const wornItems = [...byTimeRows, ...byStreakRows].flatMap(
+    (row) => row.worn_items ?? []
+  );
   const customItemIds = [
     ...new Set(
-      [...byTimeRows, ...byStreakRows]
-        .flatMap((row) => row.worn_items ?? [])
+      wornItems
         .filter((worn) => worn.source === "custom")
         .map((worn) => worn.item_id)
     ),
   ];
+  const catalogItemIds = [
+    ...new Set(
+      wornItems
+        .filter((worn) => worn.source === "catalog")
+        .map((worn) => worn.item_id)
+    ),
+  ];
 
+  // custom(직접 그린 것)과 catalog(스트릭 해금/관리자 지급 명예형) 두 소스의
+  // 이미지를 하나의 맵으로 합쳐야 착용 중인 아이템이 소스에 상관없이 다 보임
   const customItemImages = new Map<string, string>();
   if (customItemIds.length > 0) {
     const { data: customItems } = await supabase
@@ -82,6 +92,15 @@ export async function fetchRankings(
       .in("id", customItemIds);
     for (const item of customItems ?? []) {
       customItemImages.set(item.id, item.image);
+    }
+  }
+  if (catalogItemIds.length > 0) {
+    const { data: catalogItems } = await supabase
+      .from("items")
+      .select("id, image")
+      .in("id", catalogItemIds);
+    for (const item of catalogItems ?? []) {
+      if (item.image) customItemImages.set(item.id, item.image);
     }
   }
 
