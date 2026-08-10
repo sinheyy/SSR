@@ -1314,3 +1314,127 @@ select cron.schedule(
   '* * * * *',
   $$select public.sweep_stale_seats();$$
 );
+
+-- ============================================================
+-- 18. 한 사람이 동시에 여러 좌석을 차지하는 것 방지 + 유령 좌석이 만든
+--     가짜 공부시간 보정
+--    sit_at_seat이 "기존 좌석 비우기 → 새 좌석 차지하기" 두 단계로
+--    동작하는데, seats.user_id에 유니크 제약이 없어서 같은 사람이 여러
+--    기기/탭에서 거의 동시에 착석을 시도하면 두 단계 사이 레이스로 한
+--    사람이 동시에 여러 좌석을 차지할 수 있었습니다. 이런 "유령 좌석"들이
+--    원래 버그(탭 닫아도 안 비워짐) 때문에 며칠씩 미정리로 남아있다가,
+--    17번 섹션의 1회성 정리에서 유저 하나당 여러 개가 각각 정산되면서
+--    합산되어 41~62시간 같은 비정상적인 값이 오늘 치 공부시간에 들어갔습니다.
+-- ============================================================
+
+-- 좌석은 한 사람당 하나만 차지할 수 있도록 DB 레벨에서 강제
+create unique index if not exists idx_seats_one_per_user
+  on public.seats (user_id)
+  where user_id is not null;
+
+-- ------------------------------------------------------------
+-- (1회성) 위 유령 좌석 버그로 오늘 치 공부시간이 비정상적으로 커진
+-- 계정들을 원상복구. 오늘 정산분을 0으로 되돌리고, 전체 누적
+-- 랭킹시간(total_study_seconds)에서도 같은 만큼 빼서 이중 오염을
+-- 막습니다. affected_names 배열은 실제로 확인된 계정 이름으로
+-- 바꿔서 실행하세요.
+-- ------------------------------------------------------------
+do $$
+declare
+  affected_names constant text[] := array[
+    '4기_판교_2반_양경환',
+    '4기_판교_2반_천성훈',
+    '4기_판교_2반_윤신혜'
+  ];
+  today date := (now() at time zone 'Asia/Seoul')::date;
+  row_ record;
+begin
+  for row_ in
+    select al.user_id, al.total_seconds as bogus_seconds
+    from public.attendance_logs al
+    join public.users u on u.id = al.user_id
+    where al.date = today
+      and u.name = any(affected_names)
+  loop
+    update public.users
+    set total_study_seconds = greatest(0, total_study_seconds - row_.bogus_seconds)
+    where id = row_.user_id;
+
+    update public.attendance_logs
+    set total_seconds = 0
+    where user_id = row_.user_id and date = today;
+
+    perform public.recompute_streak(row_.user_id);
+  end loop;
+end $$;
+
+-- ============================================================
+-- 19. 평일 09:00~17:50 착석 제한, 오늘(KST) 하루만 임시로 풀기
+--    (자기만료형 테스트 예외)
+--    방금 배포한 좌석 하트비트/공부시간 수정을 테스트하는데 업무시간
+--    착석 차단이 걸리적거려서, 딱 오늘 날짜에만 차단을 건너뛰도록
+--    바꿉니다. 날짜가 지나면 이 조건이 다시는 참이 되지 않아 자동으로
+--    원래 동작(평일 9~17:50 차단 + 그 시간 제외)으로 돌아가므로, 나중에
+--    되돌리는 걸 깜빡할 걱정이 없습니다. 필요 없어지면 이 섹션과 아래
+--    두 함수를 원래(TEST_BYPASS 없는) 버전으로 되돌려도 됩니다.
+-- ============================================================
+
+create or replace function public.is_within_excluded_hours()
+returns boolean
+language plpgsql
+as $$
+declare
+  seoul_now timestamp := now() at time zone 'Asia/Seoul';
+  test_bypass_date constant date := '2026-08-10';
+begin
+  if seoul_now::date = test_bypass_date then
+    return false;
+  end if;
+
+  return extract(isodow from seoul_now) between 1 and 5
+    and seoul_now::time >= time '09:00:00'
+    and seoul_now::time < time '17:50:00';
+end;
+$$;
+
+create or replace function public.excluded_seconds(range_start timestamptz, range_end timestamptz)
+returns integer
+language plpgsql
+as $$
+declare
+  total_excluded integer := 0;
+  day_cursor date;
+  last_day date;
+  excl_start timestamptz;
+  excl_end timestamptz;
+  overlap_start timestamptz;
+  overlap_end timestamptz;
+  test_bypass_date constant date := '2026-08-10';
+begin
+  if range_end <= range_start then
+    return 0;
+  end if;
+
+  day_cursor := (range_start at time zone 'Asia/Seoul')::date;
+  last_day := (range_end at time zone 'Asia/Seoul')::date;
+
+  while day_cursor <= last_day loop
+    -- isodow: 1=월요일 ... 5=금요일, 6/7=주말
+    if extract(isodow from day_cursor) between 1 and 5 and day_cursor <> test_bypass_date then
+      excl_start := (day_cursor + time '09:00:00') at time zone 'Asia/Seoul';
+      excl_end := (day_cursor + time '17:50:00') at time zone 'Asia/Seoul';
+
+      overlap_start := greatest(range_start, excl_start);
+      overlap_end := least(range_end, excl_end);
+
+      if overlap_end > overlap_start then
+        total_excluded := total_excluded + extract(epoch from (overlap_end - overlap_start))::integer;
+      end if;
+    end if;
+
+    day_cursor := day_cursor + 1;
+  end loop;
+
+  return total_excluded;
+end;
+$$;
