@@ -32,21 +32,19 @@ export default function CharacterPreview({
   const boxRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ dx: 0, dy: 0 });
   const movedRef = useRef(false);
+  const itemElRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const transformRef = useRef<{
     index: number;
     mode: "resize" | "rotate";
     centerX: number;
     centerY: number;
+    scale: number;
+    rotation: number;
   } | null>(null);
 
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [transformIndex, setTransformIndex] = useState<number | null>(null);
-  const [transformDraft, setTransformDraft] = useState<{
-    scale: number;
-    rotation: number;
-  } | null>(null);
 
   function clampPercent(value: number) {
     return Math.min(100, Math.max(0, value));
@@ -116,33 +114,35 @@ export default function CharacterPreview({
       mode,
       centerX: rect.left + (worn.x / 100) * rect.width,
       centerY: rect.top + (worn.y / 100) * rect.height,
+      scale: worn.scale ?? 1,
+      rotation: worn.rotation ?? 0,
     };
-    setTransformIndex(index);
-    setTransformDraft({ scale: worn.scale ?? 1, rotation: worn.rotation ?? 0 });
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }
 
+  // 회전/크기조절 중엔 매 이동마다 React state를 갱신하지 않고 ref로 DOM을
+  // 직접 조작한다 — state로 하면 리렌더가 계속 일어나서 눈에 띄게 끊긴다.
   function handleTransformMove(e: React.PointerEvent) {
     const t = transformRef.current;
-    if (!t) return;
+    const el = itemElRefs.current[t?.index ?? -1];
+    if (!t || !el) return;
     const dx = e.clientX - t.centerX;
     const dy = e.clientY - t.centerY;
     if (t.mode === "resize") {
-      const scale = clampScale(Math.hypot(dx, dy) / IDLE_HANDLE_DIST);
-      setTransformDraft((prev) => ({ scale, rotation: prev?.rotation ?? 0 }));
+      t.scale = clampScale(Math.hypot(dx, dy) / IDLE_HANDLE_DIST);
     } else {
-      const rotation = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-      setTransformDraft((prev) => ({ scale: prev?.scale ?? 1, rotation }));
+      t.rotation = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
     }
+    el.style.width = `${BASE_SIZE * t.scale}px`;
+    el.style.height = `${BASE_SIZE * t.scale}px`;
+    el.style.transform = `rotate(${t.rotation}deg)`;
   }
 
   function handleTransformUp() {
     const t = transformRef.current;
-    if (!t || !transformDraft) return;
-    onTransform(t.index, transformDraft.scale, transformDraft.rotation);
+    if (!t) return;
+    onTransform(t.index, t.scale, t.rotation);
     transformRef.current = null;
-    setTransformIndex(null);
-    setTransformDraft(null);
   }
 
   return (
@@ -159,9 +159,8 @@ export default function CharacterPreview({
       {wornItems.map((worn, index) => {
         const pos = draggingIndex === index && dragPos ? dragPos : worn;
         const image = itemImages.get(worn.item_id);
-        const isTransforming = transformIndex === index && transformDraft;
-        const scale = isTransforming ? transformDraft.scale : worn.scale ?? 1;
-        const rotation = isTransforming ? transformDraft.rotation : worn.rotation ?? 0;
+        const scale = worn.scale ?? 1;
+        const rotation = worn.rotation ?? 0;
         const isSelected = selectedIndex === index;
 
         return (
@@ -171,6 +170,9 @@ export default function CharacterPreview({
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
           >
             <div
+              ref={(el) => {
+                itemElRefs.current[index] = el;
+              }}
               onPointerDown={(e) => handlePointerDown(index, e)}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
