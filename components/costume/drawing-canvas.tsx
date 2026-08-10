@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { DRAW_COLORS } from "@/lib/draw-colors";
 
 const SIZE = 96;
+const BRUSH_SIZE = 4;
 
 export default function DrawingCanvas({
   onSave,
@@ -14,6 +15,7 @@ export default function DrawingCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
+  const cursorRef = useRef<HTMLDivElement>(null);
   const [color, setColor] = useState(DRAW_COLORS[0]);
 
   function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -31,14 +33,20 @@ export default function DrawingCanvas({
   }
 
   function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    const pos = getPos(e);
+    if (cursorRef.current) {
+      cursorRef.current.style.display = "block";
+      cursorRef.current.style.left = `${pos.x}px`;
+      cursorRef.current.style.top = `${pos.y}px`;
+    }
+
     if (!drawingRef.current) return;
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
-    const { x, y } = getPos(e);
-    ctx.lineWidth = 4;
+    ctx.lineWidth = BRUSH_SIZE;
     ctx.lineCap = "round";
     ctx.strokeStyle = color;
-    ctx.lineTo(x, y);
+    ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
   }
 
@@ -61,16 +69,32 @@ export default function DrawingCanvas({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <canvas
-        ref={canvasRef}
-        width={SIZE}
-        height={SIZE}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        className="touch-none rounded-md border border-black/[.08] bg-white dark:border-white/[.145]"
-      />
+      <div className="relative">
+        <canvas
+          ref={canvasRef}
+          width={SIZE}
+          height={SIZE}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={() => {
+            handlePointerUp();
+            if (cursorRef.current) cursorRef.current.style.display = "none";
+          }}
+          className="touch-none rounded-md border border-black/[.08] bg-white dark:border-white/[.145]"
+        />
+        <div
+          ref={cursorRef}
+          className="pointer-events-none absolute rounded-full border-2 shadow-[0_0_0_1px_white]"
+          style={{
+            display: "none",
+            width: BRUSH_SIZE,
+            height: BRUSH_SIZE,
+            borderColor: color,
+            transform: "translate(-50%, -50%)",
+          }}
+        />
+      </div>
       <div className="grid w-fit grid-cols-7 gap-1">
         {DRAW_COLORS.map((c) => (
           <button
