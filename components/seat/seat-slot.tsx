@@ -190,8 +190,12 @@ export default function SeatSlot({
             key={i}
             src={item.image}
             alt=""
-            className="absolute size-5 -translate-x-1/2 -translate-y-1/2 object-contain"
-            style={{ left: `${item.x}%`, top: `${item.y}%` }}
+            className="absolute size-5 object-contain"
+            style={{
+              left: `${item.x}%`,
+              top: `${item.y}%`,
+              transform: `translate(-50%, -50%) rotate(${item.rotation}deg) scale(${item.scale})`,
+            }}
           />
         ))}
       </button>

@@ -114,6 +114,13 @@ export default function CostumeDrawer({
     persistWornItems(next);
   }
 
+  function handleTransform(index: number, scale: number, rotation: number) {
+    const next = wornItems.map((worn, i) =>
+      i === index ? { ...worn, scale, rotation } : worn
+    );
+    persistWornItems(next);
+  }
+
   const availableRewardItems = catalogItems.filter(
     (item) =>
       item.unlock_condition === null || unlockedItemIds.includes(item.id)
@@ -162,7 +169,7 @@ export default function CostumeDrawer({
             내 캐릭터
           </p>
           <p className="mb-2 text-center text-xs text-zinc-500">
-            착용한 아이템은 드래그해서 위치를 옮길 수 있어요
+            드래그로 위치 이동, 클릭 후 모서리로 크기·위쪽 손잡이로 회전
           </p>
           <CharacterPreview
             userId={userId}
@@ -171,6 +178,7 @@ export default function CostumeDrawer({
             itemImages={itemImages}
             catalogNames={catalogNames}
             onMove={handleMove}
+            onTransform={handleTransform}
           />
 
           <p className="mb-1.5 mt-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">

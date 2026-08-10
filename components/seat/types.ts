@@ -6,7 +6,7 @@ export type Occupant = {
   mood: string | null;
   showMood: boolean;
   avatarColor: string | null;
-  customItems?: { image: string; x: number; y: number }[];
+  customItems?: { image: string; x: number; y: number; scale: number; rotation: number }[];
 };
 
 export type SeatData = {

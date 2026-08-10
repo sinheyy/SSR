@@ -105,8 +105,12 @@ export default function RankingBoard({
                           key={itemIndex}
                           src={item.image}
                           alt=""
-                          className="absolute size-4 -translate-x-1/2 -translate-y-1/2 object-contain"
-                          style={{ left: `${item.x}%`, top: `${item.y}%` }}
+                          className="absolute size-4 object-contain"
+                          style={{
+                            left: `${item.x}%`,
+                            top: `${item.y}%`,
+                            transform: `translate(-50%, -50%) rotate(${item.rotation}deg) scale(${item.scale})`,
+                          }}
                         />
                       ))}
                     </span>
