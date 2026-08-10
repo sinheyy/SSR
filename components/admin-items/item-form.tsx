@@ -51,11 +51,21 @@ export default function ItemForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewPos, setPreviewPos] = useState({ x: 50, y: 25 });
+  const [previewTransform, setPreviewTransform] = useState({ scale: 1, rotation: 0 });
 
   const canSubmit = !!image && name.trim().length > 0;
 
   const previewWornItems: WornItem[] = image
-    ? [{ source: "custom", item_id: "preview", x: previewPos.x, y: previewPos.y }]
+    ? [
+        {
+          source: "custom",
+          item_id: "preview",
+          x: previewPos.x,
+          y: previewPos.y,
+          scale: previewTransform.scale,
+          rotation: previewTransform.rotation,
+        },
+      ]
     : [];
   const previewImages = new Map(image ? [["preview", image]] : []);
 
@@ -157,6 +167,7 @@ export default function ItemForm({
             itemImages={previewImages}
             catalogNames={new Map()}
             onMove={(_, x, y) => setPreviewPos({ x, y })}
+            onTransform={(_, scale, rotation) => setPreviewTransform({ scale, rotation })}
           />
         </div>
       )}
