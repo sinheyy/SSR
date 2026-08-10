@@ -82,6 +82,16 @@ export default function DrawingCanvas({
             if (cursorRef.current) cursorRef.current.style.display = "none";
           }}
           className="touch-none rounded-md border border-black/[.08] bg-white dark:border-white/[.145]"
+          style={{
+            // 캔버스는 실제로 투명이라(흰색으로 칠한 부분만 불투명하게
+            // 저장됨), 배경을 단색으로 고정하면 그 색을 칠할 때 또 안
+            // 보이는 문제가 반복된다. 대신 체크무늬로 "투명"을 표시해서
+            // 어떤 색을 칠해도 항상 구분되게 함 (저장되는 이미지엔 영향 없음).
+            backgroundImage:
+              "linear-gradient(45deg, #d1d5db 25%, transparent 25%), linear-gradient(-45deg, #d1d5db 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d1d5db 75%), linear-gradient(-45deg, transparent 75%, #d1d5db 75%)",
+            backgroundSize: "12px 12px",
+            backgroundPosition: "0 0, 0 6px, 6px -6px, -6px 0px",
+          }}
         />
         <div
           ref={cursorRef}
