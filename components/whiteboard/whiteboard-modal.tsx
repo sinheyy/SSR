@@ -109,9 +109,17 @@ export default function WhiteboardModal({
   async function saveCanvas() {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // PNG 대신 WebP로 저장한다. 이 이미지는 base64 텍스트로 DB에 들어가고
+    // realtime으로 모달을 연 사람 전원에게 통째로 브로드캐스트되기 때문에,
+    // 크기가 그대로 부하가 된다. WebP는 알파 채널을 지원해서 지우개로
+    // 뚫은 투명 영역도 그대로 보존된다. 인코딩을 지원하지 않는 브라우저는
+    // toDataURL이 조용히 PNG로 떨어지므로 깨지지 않는다.
     await supabase
       .from("whiteboard")
-      .update({ image: canvas.toDataURL("image/png"), updated_at: new Date().toISOString() })
+      .update({
+        image: canvas.toDataURL("image/webp", 0.8),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", "main");
   }
 
