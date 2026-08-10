@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { AVATAR_COLORS } from "@/lib/avatar-color";
 import DrawingCanvas from "@/components/costume/drawing-canvas";
@@ -47,17 +47,39 @@ export default function CostumeDrawer({
 
   const supabase = useMemo(() => createClient(), []);
 
-  async function handlePickColor(color: string) {
+  // 옷장 안에서 배치/크기/회전/색을 바꿀 때마다 바로 DB에 쓰면, users
+  // 테이블 UPDATE를 구독 중인 좌석 화면 전체가 매번 재조회를 돌게 되어
+  // 부하가 커진다. 그래서 로컬 state만 바로 갱신하고, 실제 저장은 옷장을
+  // 닫는 시점에 한 번만 한다. 탭을 그냥 닫아버리면 그동안 바뀐 건 저장 안
+  // 되고 날아가지만(=허용된 트레이드오프), 닫기 버튼/바깥 클릭으로 닫는
+  // 일반적인 흐름에서는 문제없다.
+  const initialRef = useRef({ wornItems: initialWornItems, avatarColor: initialAvatarColor });
+
+  function handlePickColor(color: string) {
     setAvatarColor(color);
-    await supabase
-      .from("users")
-      .update({ avatar_color: color })
-      .eq("id", userId);
   }
 
-  async function persistWornItems(next: WornItem[]) {
+  function persistWornItems(next: WornItem[]) {
     setWornItems(next);
-    await supabase.from("users").update({ worn_items: next }).eq("id", userId);
+  }
+
+  async function flushIfChanged() {
+    const initial = initialRef.current;
+    const changed =
+      avatarColor !== initial.avatarColor ||
+      JSON.stringify(wornItems) !== JSON.stringify(initial.wornItems);
+    if (!changed) return;
+
+    await supabase
+      .from("users")
+      .update({ worn_items: wornItems, avatar_color: avatarColor })
+      .eq("id", userId);
+    initialRef.current = { wornItems, avatarColor };
+  }
+
+  function handleClose() {
+    setOpen(false);
+    flushIfChanged();
   }
 
   async function handleSaveDrawing(dataUrl: string) {
@@ -140,7 +162,7 @@ export default function CostumeDrawer({
     <>
       {open && (
         <div
-          onClick={() => setOpen(false)}
+          onClick={handleClose}
           className="fixed inset-0 z-40 bg-black/30"
           aria-hidden
         />
@@ -156,7 +178,7 @@ export default function CostumeDrawer({
             옷장
           </span>
           <button
-            onClick={() => setOpen(false)}
+            onClick={handleClose}
             className="text-zinc-500 hover:text-black dark:hover:text-zinc-50"
             aria-label="옷장 닫기"
           >
