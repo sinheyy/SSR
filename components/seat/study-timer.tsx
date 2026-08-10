@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { excludedMsBetween } from "@/lib/study-time";
 
+// 서버 하트비트/sweep이 정상 동작하면 좌석이 몇 분 이상 미정리 상태로
+// 남을 일이 없다. 그래도 뭔가 어긋나서 sittingSince가 비정상적으로 오래된
+// 값이 되는 경우, 화면에 41시간짜리 숫자가 뜨는 걸 막기 위한 최후 방어선.
+const MAX_LIVE_SESSION_SECONDS = 15 * 60 * 60;
+
 function formatDuration(totalSeconds: number) {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -33,7 +38,10 @@ export default function StudyTimer({
       const now = Date.now();
       const rawMs = Math.max(0, now - sinceMs);
       const excludedMs = excludedMsBetween(sinceMs, now);
-      const netSeconds = Math.max(0, Math.floor((rawMs - excludedMs) / 1000));
+      const netSeconds = Math.min(
+        MAX_LIVE_SESSION_SECONDS,
+        Math.max(0, Math.floor((rawMs - excludedMs) / 1000))
+      );
       setLiveSeconds(todayBaselineSeconds + netSeconds);
     };
     tick();

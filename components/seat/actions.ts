@@ -56,3 +56,17 @@ export async function clearSeatForUser(userId: string) {
 
   revalidatePath("/");
 }
+
+// 좌석에 앉아있는 동안 주기적으로 호출해 "아직 연결되어 있음"을 서버에
+// 알림 — presence leave를 목격해줄 다른 클라이언트가 아무도 없는
+// 상태로 탭이 그냥 닫혀도, 이 하트비트가 끊긴 걸 보고 서버(pg_cron)가
+// 좌석을 자동으로 비워준다. 화면에 보여줄 게 없어서 revalidatePath는
+// 생략.
+export async function heartbeatSeat() {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("heartbeat_seat");
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

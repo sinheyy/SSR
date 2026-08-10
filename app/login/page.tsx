@@ -4,7 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import LoginButton from "@/components/auth/login-button";
 import DevEmailAuthForm from "@/components/auth/dev-email-auth-form";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -13,6 +17,17 @@ export default async function LoginPage() {
   if (user) {
     redirect("/mypage");
   }
+
+  const { testAccess } = await searchParams;
+  const testAccessValue = typeof testAccess === "string" ? testAccess : undefined;
+  const testLoginKey = process.env.TEST_LOGIN_KEY;
+  // 개발 환경이거나, 운영 환경이라도 ?testAccess=<TEST_LOGIN_KEY>로 접속했을
+  // 때만 테스트 로그인 폼을 노출. 단순히 파라미터가 "있는지"가 아니라 값이
+  // 서버가 아는 비밀값과 정확히 일치해야 해서, 아무나 아무 값이나 붙여서
+  // 우회할 수 없다.
+  const showTestLogin =
+    process.env.NODE_ENV !== "production" ||
+    (Boolean(testLoginKey) && testAccessValue === testLoginKey);
 
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
@@ -44,7 +59,13 @@ export default async function LoginPage() {
             </a>
             에 동의한 것으로 간주됩니다
           </p>
-          {process.env.NODE_ENV !== "production" && <DevEmailAuthForm />}
+          {showTestLogin && (
+            <DevEmailAuthForm
+              testLoginKey={
+                process.env.NODE_ENV !== "production" ? undefined : testAccessValue
+              }
+            />
+          )}
         </div>
       </div>
     </div>
