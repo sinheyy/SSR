@@ -10,6 +10,7 @@ export default function FeedbackModal() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function close() {
@@ -18,6 +19,7 @@ export default function FeedbackModal() {
     setTitle("");
     setContent("");
     setError(null);
+    setAgreed(false);
   }
 
   function handleSubmit() {
@@ -93,11 +95,25 @@ export default function FeedbackModal() {
                 maxLength={2000}
                 className="resize-none rounded-md border border-black/[.08] bg-transparent px-3 py-2 text-sm text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
               />
+              <label className="flex items-start gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  className="mt-0.5"
+                />
+                [필수] 문의 처리를 위한 개인정보(이름, 문의 내용) 수집·이용에
+                동의합니다 (
+                <a href="/privacy" target="_blank" className="underline hover:text-zinc-700 dark:hover:text-zinc-200">
+                  처리방침 보기
+                </a>
+                )
+              </label>
               {error && <p className="text-xs text-red-500">{error}</p>}
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isPending || !title.trim() || !content.trim()}
+                disabled={isPending || !title.trim() || !content.trim() || !agreed}
                 className="rounded-md bg-black px-3 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-50 dark:text-black"
               >
                 {isPending ? "등록 중..." : "등록하기"}
