@@ -29,7 +29,7 @@ type TableRow = {
 
 function toTableData(
   row: TableRow,
-  customItemImages: Map<string, string>
+  itemImages: Map<string, string>
 ): TableData {
   return {
     id: row.id,
@@ -51,9 +51,8 @@ function toTableData(
                 showMood: occupant.show_mood ?? true,
                 avatarColor: occupant.avatar_color,
                 customItems: (occupant.worn_items ?? [])
-                  .filter((worn) => worn.source === "custom")
                   .map((worn) => ({
-                    image: customItemImages.get(worn.item_id) ?? "",
+                    image: itemImages.get(worn.item_id) ?? "",
                     x: worn.x,
                     y: worn.y,
                   }))
@@ -79,29 +78,49 @@ export async function fetchTables(
   }
 
   const rows = (data ?? []) as unknown as TableRow[];
+  const wornItems = rows
+    .flatMap((row) => row.seats)
+    .flatMap((seat) => seat.users?.worn_items ?? []);
+
   const customItemIds = [
     ...new Set(
-      rows
-        .flatMap((row) => row.seats)
-        .flatMap((seat) => seat.users?.worn_items ?? [])
+      wornItems
         .filter((worn) => worn.source === "custom")
         .map((worn) => worn.item_id)
     ),
   ];
+  const catalogItemIds = [
+    ...new Set(
+      wornItems
+        .filter((worn) => worn.source === "catalog")
+        .map((worn) => worn.item_id)
+    ),
+  ];
 
-  const customItemImages = new Map<string, string>();
+  // custom(직접 그린 것)과 catalog(스트릭 해금/관리자 지급 명예형) 두 소스의
+  // 이미지를 하나의 맵으로 합쳐야 착용 중인 아이템이 소스에 상관없이 다 보임
+  const itemImages = new Map<string, string>();
   if (customItemIds.length > 0) {
     const { data: customItems } = await supabase
       .from("custom_items")
       .select("id, image")
       .in("id", customItemIds);
     for (const item of customItems ?? []) {
-      customItemImages.set(item.id, item.image);
+      itemImages.set(item.id, item.image);
+    }
+  }
+  if (catalogItemIds.length > 0) {
+    const { data: catalogItems } = await supabase
+      .from("items")
+      .select("id, image")
+      .in("id", catalogItemIds);
+    for (const item of catalogItems ?? []) {
+      if (item.image) itemImages.set(item.id, item.image);
     }
   }
 
   return {
-    tables: rows.map((row) => toTableData(row, customItemImages)),
+    tables: rows.map((row) => toTableData(row, itemImages)),
     error: false,
   };
 }
