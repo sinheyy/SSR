@@ -51,11 +51,13 @@ export async function fetchRankings(
     supabase
       .from("users")
       .select("id, name, total_study_seconds, avatar_color, worn_items")
+      .not("slack_user_id", "is", null)
       .order("total_study_seconds", { ascending: false })
       .limit(10),
     supabase
       .from("users")
       .select("id, name, streak_days, avatar_color, worn_items")
+      .not("slack_user_id", "is", null)
       .order("streak_days", { ascending: false })
       .limit(10),
   ]);
