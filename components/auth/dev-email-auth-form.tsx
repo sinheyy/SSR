@@ -1,6 +1,12 @@
 import { signInWithEmail, signUpWithEmail } from "@/app/auth/actions";
 
-export default function DevEmailAuthForm() {
+export default function DevEmailAuthForm({
+  testLoginKey,
+}: {
+  // 운영 환경에서 ?testAccess=<키>로 접속했을 때만 전달됨 — 폼 제출 시
+  // 서버 액션이 같은 키를 다시 검증할 수 있도록 hidden 필드로 실어보낸다.
+  testLoginKey?: string;
+}) {
   return (
     <form className="flex w-full flex-col gap-2 rounded-2xl border border-dashed border-zinc-300 p-4 text-left dark:border-zinc-700">
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -8,6 +14,9 @@ export default function DevEmailAuthForm() {
         <br />
         처음 쓰는 이메일이면 회원가입만 누르세요 (가입과 동시에 로그인됩니다)
       </p>
+      {testLoginKey && (
+        <input type="hidden" name="testLoginKey" value={testLoginKey} />
+      )}
       <input
         name="name"
         placeholder="이름 (회원가입 시 필요)"
