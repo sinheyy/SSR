@@ -4,8 +4,10 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import DrawingCanvas from "@/components/costume/drawing-canvas";
+import CharacterPreview from "@/components/costume/character-preview";
 import SegmentedControl from "@/components/admin-items/segmented-control";
 import UserMultiSelect from "@/components/admin-items/user-multi-select";
+import type { WornItem } from "@/components/costume/types";
 
 type ConditionType = "streak" | "total_hours";
 type Mode = "condition" | "grant";
@@ -48,8 +50,14 @@ export default function ItemForm({
   const [targetUserIds, setTargetUserIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewPos, setPreviewPos] = useState({ x: 50, y: 25 });
 
   const canSubmit = !!image && name.trim().length > 0;
+
+  const previewWornItems: WornItem[] = image
+    ? [{ source: "custom", item_id: "preview", x: previewPos.x, y: previewPos.y }]
+    : [];
+  const previewImages = new Map(image ? [["preview", image]] : []);
 
   async function handleSubmit() {
     if (!canSubmit || !image) return;
@@ -137,6 +145,20 @@ export default function ItemForm({
         </div>
       ) : (
         <DrawingCanvas onSave={setImage} saving={false} />
+      )}
+
+      {image && (
+        <div className="flex flex-col items-center gap-1.5">
+          <p className="text-xs text-zinc-500">착용샷 (드래그해서 위치 확인)</p>
+          <CharacterPreview
+            userId="admin-preview"
+            avatarColor={null}
+            wornItems={previewWornItems}
+            itemImages={previewImages}
+            catalogNames={new Map()}
+            onMove={(_, x, y) => setPreviewPos({ x, y })}
+          />
+        </div>
       )}
 
       <label className="flex flex-col gap-1 text-sm text-zinc-700 dark:text-zinc-300">
