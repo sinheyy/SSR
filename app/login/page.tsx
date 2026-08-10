@@ -37,6 +37,13 @@ export default async function LoginPage() {
             </p>
           </div>
           <LoginButton />
+          <p className="text-center text-xs text-zinc-400 dark:text-zinc-500">
+            로그인 시{" "}
+            <a href="/privacy" className="underline hover:text-zinc-600 dark:hover:text-zinc-300">
+              개인정보 처리방침
+            </a>
+            에 동의한 것으로 간주됩니다
+          </p>
           {process.env.NODE_ENV !== "production" && <DevEmailAuthForm />}
         </div>
       </div>
