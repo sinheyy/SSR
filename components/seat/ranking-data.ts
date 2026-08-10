@@ -6,7 +6,7 @@ export type RankingEntry = {
   name: string;
   value: number;
   avatarColor: string | null;
-  customItems: { image: string; x: number; y: number }[];
+  customItems: { image: string; x: number; y: number; scale: number; rotation: number }[];
 };
 
 export type Rankings = {
@@ -39,6 +39,8 @@ function toCustomItems(
       image: images.get(worn.item_id) ?? "",
       x: worn.x,
       y: worn.y,
+      scale: worn.scale ?? 1,
+      rotation: worn.rotation ?? 0,
     }))
     .filter((item) => item.image);
 }

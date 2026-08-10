@@ -18,7 +18,7 @@ export default function ProfileCard({
   email: string | null;
   avatarUrl: string | null;
   avatarColor: string | null;
-  customItems: { image: string; x: number; y: number }[];
+  customItems: { image: string; x: number; y: number; scale: number; rotation: number }[];
   className: string | null;
   mood: string | null;
   showMood: boolean;
@@ -45,8 +45,12 @@ export default function ProfileCard({
               key={i}
               src={item.image}
               alt=""
-              className="absolute size-9 -translate-x-1/2 -translate-y-1/2 object-contain"
-              style={{ left: `${item.x}%`, top: `${item.y}%` }}
+              className="absolute size-9 object-contain"
+              style={{
+                left: `${item.x}%`,
+                top: `${item.y}%`,
+                transform: `translate(-50%, -50%) rotate(${item.rotation}deg) scale(${item.scale})`,
+              }}
             />
           ))}
         </div>

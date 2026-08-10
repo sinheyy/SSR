@@ -55,6 +55,8 @@ function toTableData(
                     image: itemImages.get(worn.item_id) ?? "",
                     x: worn.x,
                     y: worn.y,
+                    scale: worn.scale ?? 1,
+                    rotation: worn.rotation ?? 0,
                   }))
                   .filter((item) => item.image),
               }

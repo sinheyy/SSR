@@ -83,6 +83,8 @@ export default async function MyPage() {
       image: imageById.get(worn.item_id) ?? "",
       x: worn.x,
       y: worn.y,
+      scale: worn.scale ?? 1,
+      rotation: worn.rotation ?? 0,
     }))
     .filter((item) => item.image);
 
