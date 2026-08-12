@@ -1,0 +1,228 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { updateName } from "@/components/mypage/actions";
+import {
+  composeDisplayName,
+  parseDisplayName,
+  validateNameParts,
+  CLASS_NUMBERS,
+  GENERATIONS,
+  REAL_NAME_MAX_LENGTH,
+  REGIONS,
+  type NameParts,
+} from "@/lib/display-name";
+
+const fieldClass =
+  "min-w-0 rounded-md border border-black/[.12] bg-white px-2 py-1 text-sm text-black outline-none focus:border-emerald-500 dark:border-white/[.18] dark:bg-zinc-800 dark:text-zinc-50";
+
+// 슬랙 프로필에 이름만 적어둔 사람은 "윤신혜"처럼 넘어오기 때문에,
+// 기존 이름이 형식에 안 맞으면 실명 칸에만 채워두고 나머지를 직접
+// 입력하게 한다.
+//
+// 형식이 맞더라도 셀렉트에 없는 값(목록에 없는 지역 등)은 비워서 다시
+// 고르게 한다. 값을 그대로 두면 셀렉트는 빈칸으로 보이는데 미리보기는
+// 완성된 이름을 보여주고 저장은 거부당해서, 사용자가 이유를 알 수 없다.
+function initialParts(name: string): NameParts {
+  const parsed = parseDisplayName(name);
+  if (!parsed) {
+    return {
+      generation: "",
+      region: "",
+      classNo: "",
+      realName: name.trim(),
+    };
+  }
+
+  return {
+    generation: GENERATIONS.includes(parsed.generation) ? parsed.generation : "",
+    region: (REGIONS as readonly string[]).includes(parsed.region)
+      ? parsed.region
+      : "",
+    classNo: CLASS_NUMBERS.includes(parsed.classNo) ? parsed.classNo : "",
+    realName: parsed.realName,
+  };
+}
+
+export default function NameEditor({ name }: { name: string }) {
+  const [editing, setEditing] = useState(false);
+  const [parts, setParts] = useState<NameParts>(() => initialParts(name));
+  const [error, setError] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function setPart(key: keyof NameParts, value: string) {
+    setParts((prev) => ({ ...prev, [key]: value }));
+    setError(null);
+    setSuggestion(null);
+  }
+
+  function handleCancel() {
+    setParts(initialParts(name));
+    setError(null);
+    setSuggestion(null);
+    setEditing(false);
+  }
+
+  // 서버가 제안한 이름("...윤신혜2")을 폼에 도로 채워넣는다. 조립된 이름을
+  // 다시 쪼개면 되므로 어느 칸에 숫자가 붙었는지 따로 알 필요가 없다.
+  function applySuggestion() {
+    if (!suggestion) return;
+    const next = parseDisplayName(suggestion);
+    if (next) setParts(next);
+    setError(null);
+    setSuggestion(null);
+  }
+
+  function handleSave() {
+    const invalidReason = validateNameParts(parts);
+    if (invalidReason) {
+      setError(invalidReason);
+      setSuggestion(null);
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await updateName(parts);
+      if (result.ok) {
+        setError(null);
+        setSuggestion(null);
+        setEditing(false);
+        return;
+      }
+      setError(result.message);
+      setSuggestion(result.suggestion ?? null);
+    });
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
+          {name}
+        </h2>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+        >
+          이름 수정
+        </button>
+      </div>
+    );
+  }
+
+  const isComplete = Boolean(
+    parts.generation &&
+      parts.region &&
+      parts.classNo &&
+      parts.realName.trim()
+  );
+  const preview = composeDisplayName(parts);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+        <select
+          value={parts.generation}
+          onChange={(e) => setPart("generation", e.target.value)}
+          aria-label="기수"
+          className={fieldClass}
+        >
+          <option value="">기수</option>
+          {GENERATIONS.map((g) => (
+            <option key={g} value={g}>
+              {g}기
+            </option>
+          ))}
+        </select>
+        <select
+          value={parts.region}
+          onChange={(e) => setPart("region", e.target.value)}
+          aria-label="지역"
+          className={fieldClass}
+        >
+          <option value="">지역</option>
+          {REGIONS.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+        <select
+          value={parts.classNo}
+          onChange={(e) => setPart("classNo", e.target.value)}
+          aria-label="반"
+          className={fieldClass}
+        >
+          <option value="">반</option>
+          {CLASS_NUMBERS.map((c) => (
+            <option key={c} value={c}>
+              {c}반
+            </option>
+          ))}
+        </select>
+        <input
+          value={parts.realName}
+          onChange={(e) => setPart("realName", e.target.value)}
+          maxLength={REAL_NAME_MAX_LENGTH}
+          placeholder="이름"
+          aria-label="이름"
+          className={`${fieldClass} w-28`}
+        />
+      </div>
+
+      {/* 셀렉트가 비어있는 동안에는 "기__반_" 같은 반쪽짜리 미리보기가
+          나오므로, 네 칸이 다 찼을 때만 최종 이름을 보여준다. */}
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        {isComplete ? (
+          <>
+            이렇게 표시됩니다 —{" "}
+            <span className="font-medium text-black dark:text-zinc-50">
+              {preview}
+            </span>
+          </>
+        ) : (
+          "기수 · 지역 · 반을 고르고 이름을 입력하면 최종 이름이 여기 표시됩니다."
+        )}
+      </p>
+
+      {error && (
+        <p className="text-xs font-medium text-red-600 dark:text-red-400">
+          {error}
+          {suggestion && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={applySuggestion}
+                className="font-semibold text-emerald-600 underline underline-offset-2 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+              >
+                {suggestion} 로 하기
+              </button>
+            </>
+          )}
+        </p>
+      )}
+
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isPending}
+          className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
+        >
+          {isPending ? "저장 중..." : "저장"}
+        </button>
+        <button
+          type="button"
+          onClick={handleCancel}
+          disabled={isPending}
+          className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-200 disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+        >
+          취소
+        </button>
+      </div>
+    </div>
+  );
+}
