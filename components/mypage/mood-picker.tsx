@@ -46,11 +46,15 @@ export default function MoodPicker({
           {MOOD_EMOJI[m]} {m}
         </button>
       ))}
+      {/* 테두리는 버튼 문구(다음에 할 동작)가 아니라 "지금 상태"를 나타낸다.
+          실선 = 스터디룸에 보이는 중, 점선 = 숨겨진 중. */}
       <button
         type="button"
         onClick={handleToggleVisibility}
         disabled={isVisibilityPending}
-        className="rounded-full border border-dashed border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+        className={`rounded-full border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 ${
+          showMood ? "" : "border-dashed"
+        }`}
       >
         {showMood ? "🙈 스터디룸에 숨기기" : "👁 스터디룸에 표시하기"}
       </button>

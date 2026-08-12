@@ -1942,3 +1942,217 @@ commit;
 --   -- sit_at_seat / leave_seat / clear_seat_for_user /
 --   -- clear_seats_for_excluded_hours 정의를 그대로 다시 실행하세요.
 -- commit;
+
+-- ============================================================
+-- 21. users 테이블을 컬럼 단위로 잠가서 랭킹 조작 차단
+--
+--    [문제]
+--    users_update_own 정책(135번 줄)은 "본인 행이면 수정 가능"만 말하고,
+--    RLS는 행 단위라 어떤 컬럼을 고칠 수 있는지는 못 가립니다. 그래서
+--    로그인한 사람이 브라우저 콘솔에서 이렇게 하면 그대로 통과합니다:
+--
+--      supabase.from('users')
+--        .update({ total_study_seconds: 999999999 })
+--        .eq('id', '<본인 id>')
+--
+--    랭킹(total_study_seconds), 연속 출석(streak_days), 아이템 해금
+--    (unlocked_items)이 전부 클라이언트에서 위조 가능한 상태였습니다.
+--
+--    [해결]
+--    RLS와 별개로 존재하는 Postgres의 "컬럼 단위 GRANT"를 씁니다.
+--    앱이 authenticated 권한으로 실제 쓰는 컬럼은 5개뿐이라
+--    (name / mood / show_mood / worn_items / avatar_color)
+--    그것만 허용하고 나머지는 회수하면 앱 코드는 한 줄도 안 바꿔도 됩니다.
+--
+--    users_update_own 정책은 그대로 둡니다. 두 겹으로 걸려서
+--    "본인 행의, 허용된 컬럼만" 수정 가능해집니다.
+--
+--    [⚠️ 먼저 처리해야 하는 것 — 이거 빼먹으면 공부시간 정산이 깨짐]
+--    settle_current_seat()이 security INVOKER라서 호출한 사용자 권한으로
+--    돕니다. 이 함수가 total_study_seconds를 직접 UPDATE하기 때문에,
+--    권한만 회수하면 자리에서 일어날 때(leave_seat -> settle_current_seat)
+--    정산이 권한 오류로 실패합니다. 그래서 이 함수를 security definer로
+--    바꿔서 소유자 권한으로 돌게 먼저 만듭니다.
+--
+--    함수 본문이 auth.uid()로만 대상을 잡기 때문에 definer로 바꿔도
+--    남의 기록을 건드릴 수 있는 경로는 생기지 않습니다.
+--
+--    나머지 정산 경로(clear_seat_for_user / clear_seats_for_excluded_hours /
+--    sweep_stale_seats / recompute_streak / check_unlocks / grant_item)는
+--    이미 전부 security definer라 영향을 받지 않습니다.
+-- ============================================================
+
+begin;
+
+-- ------------------------------------------------------------
+-- 21-1. settle_current_seat을 security definer로 전환
+--    로직은 기존과 완전히 동일하고 security 모드와 search_path만 바뀝니다.
+-- ------------------------------------------------------------
+create or replace function public.settle_current_seat()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  since timestamptz;
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  select status_changed_at into since
+  from public.seats
+  where user_id = auth.uid() and status_changed_at is not null;
+
+  if since is null then
+    return;
+  end if;
+
+  elapsed := greatest(0, extract(epoch from (now() - since))::integer - public.excluded_seconds(since, now()));
+
+  if elapsed = 0 then
+    return;
+  end if;
+
+  insert into public.attendance_logs (user_id, date, total_seconds)
+  values (auth.uid(), today, elapsed)
+  on conflict (user_id, date)
+  do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+  update public.users
+  set total_study_seconds = total_study_seconds + elapsed
+  where id = auth.uid();
+
+  perform public.recompute_streak(auth.uid());
+  perform public.check_unlocks(auth.uid());
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- 21-2. 컬럼 단위로 UPDATE 권한 재설정
+--    revoke가 먼저 와야 기존의 "테이블 전체 UPDATE" 권한이 사라집니다.
+--    service_role은 건드리지 않으므로 관리 작업은 그대로 됩니다.
+-- ------------------------------------------------------------
+revoke update on public.users from authenticated;
+revoke update on public.users from anon;
+
+grant update (name, mood, show_mood, worn_items, avatar_color)
+  on public.users to authenticated;
+
+commit;
+
+-- ------------------------------------------------------------
+-- 21-3. 검증 (따로 실행)
+-- ------------------------------------------------------------
+
+-- (1) 허용된 컬럼이 정확히 5개인지 확인.
+--     name / mood / show_mood / worn_items / avatar_color 만 나와야 정상.
+-- select column_name
+-- from information_schema.column_privileges
+-- where table_schema = 'public' and table_name = 'users'
+--   and grantee = 'authenticated' and privilege_type = 'UPDATE'
+-- order by column_name;
+
+-- (2) settle_current_seat이 definer로 바뀌었는지 확인. true여야 정상.
+-- select proname, prosecdef
+-- from pg_proc
+-- where pronamespace = 'public'::regnamespace
+--   and proname in ('settle_current_seat', 'recompute_streak', 'check_unlocks');
+
+-- (3) 실제 차단 확인 — 브라우저 콘솔에서 아래를 실행하면
+--     "permission denied for table users" 류의 에러가 나야 정상입니다.
+--     await supabase.from('users')
+--       .update({ total_study_seconds: 999999999 })
+--       .eq('id', (await supabase.auth.getUser()).data.user.id)
+
+-- (4) 정상 동작 확인 — 자리에 앉았다 일어난 뒤 공부시간이 늘어나는지,
+--     옷장에서 아이템 배치/색 변경이 저장되는지, 마이페이지에서 이름과
+--     기분 변경이 되는지 직접 확인하세요. 21-1을 빼먹으면 (4)의 첫 번째가
+--     조용히 실패합니다.
+
+-- ------------------------------------------------------------
+-- 21-4. 롤백 (문제 생겼을 때만)
+-- ------------------------------------------------------------
+-- begin;
+--   grant update on public.users to authenticated;
+--   -- settle_current_seat은 definer로 둬도 무해하므로 굳이 되돌릴 필요 없음.
+--   -- 굳이 되돌리려면 710번 줄 부근의 security invoker 버전을 다시 실행하세요.
+-- commit;
+
+-- ============================================================
+-- 22. 슬랙 가입 시 이름이 겹치면 자동으로 뒤에 숫자 붙이기
+--
+--    [문제]
+--    이름은 랭킹판/좌석/관리자 화면에서 사람을 식별하는 유일한 값인데,
+--    슬랙 표시 이름이 같은 사람이 둘 있으면 가입 시점부터 똑같은 이름으로
+--    들어옵니다. 마이페이지 이름 수정에는 중복 검사를 넣었지만 가입 경로는
+--    그대로 뚫려 있었습니다.
+--
+--    users.name에 unique 제약을 거는 방법도 있지만, 그러면 이 트리거의
+--    insert가 실패하면서 auth.users insert까지 통째로 롤백되어 두 번째
+--    사람은 "로그인 자체가 안 되는" 상태가 됩니다. 그래서 제약을 거는 대신
+--    트리거가 알아서 비어있는 이름을 찾도록 했습니다.
+--
+--    [함께 고친 것]
+--    - set search_path 고정: 이 함수는 security definer인데 search_path가
+--      설정돼 있지 않아 Supabase Security Advisor가 "Function Search Path
+--      Mutable"로 경고하던 항목입니다.
+--    - 이름이 아예 없는 경우 대비: 슬랙 프로필에 name/full_name이 둘 다
+--      없으면 name이 not null이라 insert가 실패하고, 위와 같은 이유로
+--      가입이 통째로 막힙니다. 기본값을 넣어 방어합니다.
+--
+--    [주의]
+--    이 변경은 "앞으로의 가입"에만 적용됩니다. 이미 중복인 이름이 있으면
+--    그대로 남으니 아래 쿼리로 확인하고 수동으로 정리하세요.
+--
+--      select name, count(*) from public.users
+--      group by name having count(*) > 1;
+-- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  base_name text;
+  candidate text;
+  suffix integer := 1;
+begin
+  base_name := nullif(trim(coalesce(
+    new.raw_user_meta_data ->> 'name',
+    new.raw_user_meta_data ->> 'full_name'
+  )), '');
+
+  if base_name is null then
+    base_name := '이름없음';
+  end if;
+
+  candidate := base_name;
+
+  -- 이미 같은 이름이 있으면 뒤에 숫자를 붙여가며 비어있는 이름을 찾는다.
+  -- (윤신혜 -> 윤신혜2 -> 윤신혜3 ...) 마이페이지 이름 수정의 중복 처리와
+  -- 같은 규칙이다.
+  --
+  -- 상한을 두는 이유: 어떤 이유로든 루프가 끝나지 않으면 가입이 영영
+  -- 막힌다. 100까지 가도 못 찾으면 중복을 감수하고 그냥 넣는다 —
+  -- 이름이 겹치는 것보다 로그인이 안 되는 게 훨씬 나쁘다.
+  while suffix < 100 and exists (
+    select 1 from public.users where name = candidate
+  ) loop
+    suffix := suffix + 1;
+    candidate := base_name || suffix;
+  end loop;
+
+  insert into public.users (id, slack_user_id, name, email, avatar_url)
+  values (
+    new.id,
+    new.raw_user_meta_data ->> 'sub',
+    candidate,
+    new.email,
+    new.raw_user_meta_data ->> 'avatar_url'
+  );
+
+  return new;
+end;
+$$;
