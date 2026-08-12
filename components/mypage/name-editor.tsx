@@ -19,48 +19,79 @@ const fieldClass =
 // 슬랙 프로필에 이름만 적어둔 사람은 "윤신혜"처럼 넘어오기 때문에,
 // 기존 이름이 형식에 안 맞으면 실명 칸에만 채워두고 나머지를 직접
 // 입력하게 한다.
+//
+// 형식이 맞더라도 셀렉트에 없는 값(목록에 없는 지역 등)은 비워서 다시
+// 고르게 한다. 값을 그대로 두면 셀렉트는 빈칸으로 보이는데 미리보기는
+// 완성된 이름을 보여주고 저장은 거부당해서, 사용자가 이유를 알 수 없다.
 function initialParts(name: string): NameParts {
-  return (
-    parseDisplayName(name) ?? {
+  const parsed = parseDisplayName(name);
+  if (!parsed) {
+    return {
       generation: "",
       region: "",
       classNo: "",
       realName: name.trim(),
-    }
-  );
+    };
+  }
+
+  return {
+    generation: GENERATIONS.includes(parsed.generation) ? parsed.generation : "",
+    region: (REGIONS as readonly string[]).includes(parsed.region)
+      ? parsed.region
+      : "",
+    classNo: CLASS_NUMBERS.includes(parsed.classNo) ? parsed.classNo : "",
+    realName: parsed.realName,
+  };
 }
 
 export default function NameEditor({ name }: { name: string }) {
   const [editing, setEditing] = useState(false);
   const [parts, setParts] = useState<NameParts>(() => initialParts(name));
   const [error, setError] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function setPart(key: keyof NameParts, value: string) {
     setParts((prev) => ({ ...prev, [key]: value }));
     setError(null);
+    setSuggestion(null);
   }
 
   function handleCancel() {
     setParts(initialParts(name));
     setError(null);
+    setSuggestion(null);
     setEditing(false);
+  }
+
+  // 서버가 제안한 이름("...윤신혜2")을 폼에 도로 채워넣는다. 조립된 이름을
+  // 다시 쪼개면 되므로 어느 칸에 숫자가 붙었는지 따로 알 필요가 없다.
+  function applySuggestion() {
+    if (!suggestion) return;
+    const next = parseDisplayName(suggestion);
+    if (next) setParts(next);
+    setError(null);
+    setSuggestion(null);
   }
 
   function handleSave() {
     const invalidReason = validateNameParts(parts);
     if (invalidReason) {
       setError(invalidReason);
+      setSuggestion(null);
       return;
     }
 
     startTransition(async () => {
-      try {
-        await updateName(parts);
+      const result = await updateName(parts);
+      if (result.ok) {
+        setError(null);
+        setSuggestion(null);
         setEditing(false);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "저장에 실패했습니다.");
+        return;
       }
+      setError(result.message);
+      setSuggestion(result.suggestion ?? null);
     });
   }
 
@@ -159,6 +190,18 @@ export default function NameEditor({ name }: { name: string }) {
       {error && (
         <p className="text-xs font-medium text-red-600 dark:text-red-400">
           {error}
+          {suggestion && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={applySuggestion}
+                className="font-semibold text-emerald-600 underline underline-offset-2 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+              >
+                {suggestion} 로 하기
+              </button>
+            </>
+          )}
         </p>
       )}
 
