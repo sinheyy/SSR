@@ -1,5 +1,6 @@
 import { colorForUser } from "@/lib/avatar-color";
 import MoodPicker from "@/components/mypage/mood-picker";
+import NameEditor from "@/components/mypage/name-editor";
 import { isMood } from "@/components/mypage/moods";
 
 export default function ProfileCard({
@@ -57,11 +58,7 @@ export default function ProfileCard({
       )}
 
       <div className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
-            {name}
-          </h2>
-        </div>
+        <NameEditor name={name} />
         <p className="text-sm text-zinc-500 dark:text-zinc-400">{email}</p>
         {className && (
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
