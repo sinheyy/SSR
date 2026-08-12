@@ -6,12 +6,14 @@ import {
   composeDisplayName,
   parseDisplayName,
   validateNameParts,
+  CLASS_NUMBERS,
+  GENERATIONS,
   REAL_NAME_MAX_LENGTH,
-  REGION_MAX_LENGTH,
+  REGIONS,
   type NameParts,
 } from "@/lib/display-name";
 
-const inputClass =
+const fieldClass =
   "min-w-0 rounded-md border border-black/[.12] bg-white px-2 py-1 text-sm text-black outline-none focus:border-emerald-500 dark:border-white/[.18] dark:bg-zinc-800 dark:text-zinc-50";
 
 // 슬랙 프로필에 이름만 적어둔 사람은 "윤신혜"처럼 넘어오기 때문에,
@@ -79,54 +81,79 @@ export default function NameEditor({ name }: { name: string }) {
     );
   }
 
+  const isComplete = Boolean(
+    parts.generation &&
+      parts.region &&
+      parts.classNo &&
+      parts.realName.trim()
+  );
   const preview = composeDisplayName(parts);
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400">
-        <input
+        <select
           value={parts.generation}
           onChange={(e) => setPart("generation", e.target.value)}
-          inputMode="numeric"
-          maxLength={2}
-          placeholder="4"
           aria-label="기수"
-          className={`${inputClass} w-12 text-center`}
-        />
-        <span>기</span>
-        <input
+          className={fieldClass}
+        >
+          <option value="">기수</option>
+          {GENERATIONS.map((g) => (
+            <option key={g} value={g}>
+              {g}기
+            </option>
+          ))}
+        </select>
+        <select
           value={parts.region}
           onChange={(e) => setPart("region", e.target.value)}
-          maxLength={REGION_MAX_LENGTH}
-          placeholder="판교"
           aria-label="지역"
-          className={`${inputClass} w-20`}
-        />
-        <input
+          className={fieldClass}
+        >
+          <option value="">지역</option>
+          {REGIONS.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+        <select
           value={parts.classNo}
           onChange={(e) => setPart("classNo", e.target.value)}
-          inputMode="numeric"
-          maxLength={2}
-          placeholder="2"
           aria-label="반"
-          className={`${inputClass} w-12 text-center`}
-        />
-        <span>반</span>
+          className={fieldClass}
+        >
+          <option value="">반</option>
+          {CLASS_NUMBERS.map((c) => (
+            <option key={c} value={c}>
+              {c}반
+            </option>
+          ))}
+        </select>
         <input
           value={parts.realName}
           onChange={(e) => setPart("realName", e.target.value)}
           maxLength={REAL_NAME_MAX_LENGTH}
           placeholder="이름"
           aria-label="이름"
-          className={`${inputClass} w-28`}
+          className={`${fieldClass} w-28`}
         />
       </div>
 
+      {/* 셀렉트가 비어있는 동안에는 "기__반_" 같은 반쪽짜리 미리보기가
+          나오므로, 네 칸이 다 찼을 때만 최종 이름을 보여준다. */}
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        이렇게 표시됩니다 —{" "}
-        <span className="font-medium text-black dark:text-zinc-50">
-          {preview}
-        </span>
+        {isComplete ? (
+          <>
+            이렇게 표시됩니다 —{" "}
+            <span className="font-medium text-black dark:text-zinc-50">
+              {preview}
+            </span>
+          </>
+        ) : (
+          "기수 · 지역 · 반을 고르고 이름을 입력하면 최종 이름이 여기 표시됩니다."
+        )}
       </p>
 
       {error && (

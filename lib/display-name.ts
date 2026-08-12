@@ -24,7 +24,20 @@ export const EMPTY_NAME_PARTS: NameParts = {
 // 지역/실명에 "_"가 들어가면 다시 파싱할 때 경계가 모호해지므로 막는다.
 const NAME_PATTERN = /^(\d{1,2})기_([^_]+)_(\d{1,2})반_([^_]+)$/;
 
-export const REGION_MAX_LENGTH = 10;
+// 기수/지역/반은 정해진 값 중에서만 고르게 한다. 자유 입력으로 두면
+// "판교"/"판교시"처럼 같은 곳이 다르게 적혀서 이름으로 사람을 식별하는
+// 의미가 흐려진다.
+//
+// 새 기수가 시작되면 LATEST_GENERATION만 올리면 된다.
+export const LATEST_GENERATION = 4;
+export const GENERATIONS = Array.from({ length: LATEST_GENERATION }, (_, i) =>
+  String(i + 1)
+);
+export const REGIONS = ["판교", "울산", "광주"] as const;
+export const CLASS_NUMBERS = Array.from({ length: 10 }, (_, i) =>
+  String(i + 1)
+);
+
 export const REAL_NAME_MAX_LENGTH = 20;
 
 // 이미 형식을 갖춘 이름이면 칸별로 쪼개서 폼에 채워준다.
@@ -62,17 +75,17 @@ export function validateNameParts(parts: NameParts): string | null {
   if (!generation || !region || !classNo || !realName) {
     return "모든 칸을 채워주세요.";
   }
-  if (!/^\d{1,2}$/.test(generation) || Number(generation) < 1) {
-    return "기수는 1~99 사이의 숫자로 입력해주세요.";
+  if (!GENERATIONS.includes(generation)) {
+    return `기수는 1~${LATEST_GENERATION} 중에서 골라주세요.`;
   }
-  if (!/^\d{1,2}$/.test(classNo) || Number(classNo) < 1) {
-    return "반은 1~99 사이의 숫자로 입력해주세요.";
+  if (!(REGIONS as readonly string[]).includes(region)) {
+    return `지역은 ${REGIONS.join(", ")} 중에서 골라주세요.`;
   }
-  if (region.includes("_") || realName.includes("_")) {
-    return "지역과 이름에는 밑줄(_)을 쓸 수 없습니다.";
+  if (!CLASS_NUMBERS.includes(classNo)) {
+    return `반은 1~${CLASS_NUMBERS.length} 중에서 골라주세요.`;
   }
-  if (region.length > REGION_MAX_LENGTH) {
-    return `지역은 ${REGION_MAX_LENGTH}자 이내로 입력해주세요.`;
+  if (realName.includes("_")) {
+    return "이름에는 밑줄(_)을 쓸 수 없습니다.";
   }
   if (realName.length > REAL_NAME_MAX_LENGTH) {
     return `이름은 ${REAL_NAME_MAX_LENGTH}자 이내로 입력해주세요.`;
