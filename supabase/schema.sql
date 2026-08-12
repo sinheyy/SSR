@@ -1440,6 +1440,510 @@ end;
 $$;
 
 -- ============================================================
+-- 20. 하트비트를 seats에서 분리해 Realtime 브로드캐스트 폭주 제거
+--
+--    [문제]
+--    heartbeat_seat()이 30초마다 seats.last_heartbeat_at을 UPDATE하는데,
+--    seats는 supabase_realtime publication에 들어있습니다(297번 줄).
+--    Realtime의 구독 단위는 "테이블"이지 "컬럼"이 아니라서, 클라이언트는
+--    "seats가 바뀌면 알려줘"까지만 말할 수 있고 "last_heartbeat_at만 바뀐
+--    건 빼고"는 표현할 수가 없습니다. 그래서 좌석에 아무 의미 있는 변화가
+--    없어도 하트비트 한 번마다 접속자 전원에게 알림이 가고, 전원이
+--    fetchTables()를 돌립니다.
+--
+--    N명이 앉아있으면 30초마다 N x N 번의 전체 좌석 조회가 발생합니다.
+--    (45명 기준 30초당 2,025회 = 초당 68회, Postgres 쿼리로는 초당 ~200개)
+--    Realtime 메시지 쿼터도 이 속도로 태웁니다.
+--
+--    [해결]
+--    화면에 그릴 일이 전혀 없는 last_heartbeat_at을 publication에 없는
+--    별도 테이블로 옮깁니다. publication에 없는 테이블은 Realtime이 WAL
+--    디코딩 자체를 하지 않으므로, 30초마다 두들겨도 브로드캐스트 비용이
+--    0입니다. 좌석 착석/퇴장 같은 "진짜 변화"만 seats에 남아 알림이 갑니다.
+--
+--    [앱 배포가 필요 없는 이유]
+--    클라이언트는 supabase.rpc("heartbeat_seat")라는 이름만 압니다.
+--    이름과 시그니처를 그대로 두고 몸통만 바꾸므로, 지금 열려 있는 탭들도
+--    아무것도 모른 채 계속 정상 동작합니다. 새로고침도 필요 없습니다.
+--
+--    [데이터 안전장치]
+--    - attendance_logs / users.total_study_seconds는 이 마이그레이션에서
+--      단 한 줄도 건드리지 않습니다. 이미 쌓인 공부시간은 그대로입니다.
+--    - 전체를 단일 트랜잭션으로 묶습니다. 중간 상태가 노출되지 않습니다.
+--    - 함수를 바꾸기 "전에" 현재 착석자의 하트비트를 새 테이블로 백필합니다.
+--      이걸 빠뜨리면 새 sweep이 빈 테이블을 보고 3분 넘게 앉아있던 사람을
+--      전원 퇴장시켜 버립니다. 이 마이그레이션에서 가장 위험한 지점입니다.
+--    - seats.last_heartbeat_at 컬럼은 "지우지 않고" 남겨둡니다. 되돌릴 때
+--      필요합니다. (아래 롤백 스크립트 참고)
+--    - 정산 로직(elapsed 계산식, excluded_seconds 차감, settle_date 기준)은
+--      기존과 완전히 동일하게 유지합니다. 읽는 위치만 바뀝니다.
+-- ============================================================
+
+begin;
+
+-- ------------------------------------------------------------
+-- 20-1. 하트비트 전용 테이블
+--    publication에 "추가하지 않는 것"이 이 작업의 전부입니다.
+--    RLS를 켜고 정책을 하나도 만들지 않아 클라이언트의 직접 접근은 막고,
+--    아래 security definer 함수들로만 접근하게 합니다.
+-- ------------------------------------------------------------
+create table if not exists public.seat_heartbeats (
+  user_id uuid primary key references public.users(id) on delete cascade,
+  last_heartbeat_at timestamptz not null default now()
+);
+
+alter table public.seat_heartbeats enable row level security;
+
+-- ------------------------------------------------------------
+-- 20-2. (중요) 현재 착석자 백필
+--    지금 앉아있는 사람들의 마지막 하트비트를 그대로 옮겨옵니다.
+--    now()로 덮어쓰면 안 됩니다 — 이미 하트비트가 끊긴 사람에게 없던
+--    시간을 크레딧하게 됩니다. 실제 값을 보존해야 정산이 정확합니다.
+-- ------------------------------------------------------------
+insert into public.seat_heartbeats (user_id, last_heartbeat_at)
+select
+  s.user_id,
+  coalesce(s.last_heartbeat_at, s.status_changed_at, now())
+from public.seats s
+where s.user_id is not null
+on conflict (user_id)
+do update set last_heartbeat_at = excluded.last_heartbeat_at;
+
+-- ------------------------------------------------------------
+-- 20-3. 정산 기준 시각을 한 곳에서 계산하는 헬퍼
+--    4개 정산 경로(leave / presence leave / 업무시간 일괄 / sweep)가
+--    똑같은 규칙을 쓰도록 함수로 뽑습니다.
+--
+--    greatest(status_changed_at, ...)로 감싸는 게 핵심입니다. 옛 세션의
+--    하트비트 행이 남아있는 채로 그 사람이 다시 앉으면, 낡은 타임스탬프
+--    때문에 "방금 앉은 자리가 즉시 sweep당하는" 사고가 납니다. 착석 시각과
+--    비교해 큰 쪽을 쓰면 행 정리를 깜빡해도 안전합니다.
+--    least(now(), ...)는 어떤 이유로든 미래 시각이 들어와도 없던 시간이
+--    크레딧되지 않게 막는 상한입니다.
+-- ------------------------------------------------------------
+create or replace function public.seat_effective_until(
+  p_user_id uuid,
+  p_status_changed_at timestamptz
+)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select least(
+    now(),
+    greatest(
+      p_status_changed_at,
+      coalesce(
+        (select hb.last_heartbeat_at
+         from public.seat_heartbeats hb
+         where hb.user_id = p_user_id),
+        p_status_changed_at
+      )
+    )
+  );
+$$;
+
+-- ------------------------------------------------------------
+-- 20-3b. sit_at_seat / leave_seat이 쓸 하트비트 쓰기 헬퍼
+--    이 둘은 security invoker라 RLS가 걸린 seat_heartbeats에 직접 쓸 수
+--    없어서 definer 함수로 감쌉니다.
+--
+--    (보안) 일부러 user_id를 인자로 받지 않고 auth.uid()만 씁니다. 인자를
+--    받으면 authenticated 아무나 남의 하트비트를 지울 수 있고, 그러면
+--    3분 뒤 sweep이 그 사람 좌석을 비워버려 좌석을 빼앗을 수 있습니다.
+--    인자가 없으면 호출자는 자기 자신에게만 영향을 줄 수 있습니다.
+-- ------------------------------------------------------------
+create or replace function public.touch_seat_heartbeat()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return;
+  end if;
+
+  insert into public.seat_heartbeats (user_id, last_heartbeat_at)
+  values (auth.uid(), now())
+  on conflict (user_id)
+  do update set last_heartbeat_at = now();
+end;
+$$;
+
+create or replace function public.drop_seat_heartbeat()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.seat_heartbeats where user_id = auth.uid();
+end;
+$$;
+
+grant execute on function public.touch_seat_heartbeat() to authenticated;
+grant execute on function public.drop_seat_heartbeat() to authenticated;
+
+-- ------------------------------------------------------------
+-- 20-4. heartbeat_seat: seats를 아예 건드리지 않습니다
+--    이 함수가 seats에 쓰지 않게 되는 것이 이 마이그레이션의 목적입니다.
+--    security definer로 바꿔서 seat_heartbeats에 RLS 정책을 열지 않고도
+--    본인 행만 갱신하게 합니다.
+-- ------------------------------------------------------------
+create or replace function public.heartbeat_seat()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return;
+  end if;
+
+  -- 앉아있지 않으면 아무 일도 하지 않습니다 (기존 동작과 동일)
+  if not exists (select 1 from public.seats where user_id = auth.uid()) then
+    return;
+  end if;
+
+  insert into public.seat_heartbeats (user_id, last_heartbeat_at)
+  values (auth.uid(), now())
+  on conflict (user_id)
+  do update set last_heartbeat_at = now();
+end;
+$$;
+
+grant execute on function public.heartbeat_seat() to authenticated;
+
+-- ------------------------------------------------------------
+-- 20-5. sit_at_seat: 착석 시 하트비트를 새 테이블에서 초기화
+--    seats.last_heartbeat_at 쓰기를 제거한 것 외에는 기존과 동일합니다.
+-- ------------------------------------------------------------
+create or replace function public.sit_at_seat(target_seat_id uuid)
+returns void
+language plpgsql
+security invoker
+as $$
+begin
+  if public.is_within_excluded_hours() then
+    raise exception '평일 09:00~17:50에는 착석할 수 없습니다';
+  end if;
+
+  -- 자리를 옮기는 경우, 기존 자리에 앉아있던 시간부터 정산
+  perform public.settle_current_seat();
+
+  -- 기존에 앉아있던 자리가 있으면 비우기
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = auth.uid();
+
+  -- 새 자리에 착석 (이미 다른 사람이 앉아있으면 실패)
+  update public.seats
+  set user_id = auth.uid(), status_changed_at = now()
+  where id = target_seat_id and user_id is null;
+
+  if not found then
+    raise exception '이미 다른 사람이 앉아있는 자리입니다';
+  end if;
+
+  perform public.touch_seat_heartbeat();
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- 20-6. leave_seat: 퇴장 시 하트비트 행 제거
+-- ------------------------------------------------------------
+create or replace function public.leave_seat()
+returns void
+language plpgsql
+security invoker
+as $$
+begin
+  perform public.settle_current_seat();
+
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = auth.uid();
+
+  perform public.drop_seat_heartbeat();
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- 20-7. clear_seat_for_user: presence leave 경로
+--    effective_until을 seat_heartbeats에서 읽는 것 외에는 기존과 동일.
+--    "for update"로 행을 잠가 sweep_stale_seats와 동시에 처리되며 시간이
+--    이중 크레딧되는 것을 막는 것도 그대로 유지합니다.
+-- ------------------------------------------------------------
+create or replace function public.clear_seat_for_user(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  since timestamptz;
+  effective_until timestamptz;
+  elapsed integer;
+  settle_date date;
+begin
+  select status_changed_at
+  into since
+  from public.seats
+  where user_id = target_user_id and status_changed_at is not null
+  for update;
+
+  if since is not null then
+    effective_until := public.seat_effective_until(target_user_id, since);
+
+    elapsed := greatest(
+      0,
+      extract(epoch from (effective_until - since))::integer
+        - public.excluded_seconds(since, effective_until)
+    );
+
+    if elapsed > 0 then
+      settle_date := (effective_until at time zone 'Asia/Seoul')::date;
+
+      insert into public.attendance_logs (user_id, date, total_seconds)
+      values (target_user_id, settle_date, elapsed)
+      on conflict (user_id, date)
+      do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+      update public.users
+      set total_study_seconds = total_study_seconds + elapsed
+      where id = target_user_id;
+
+      perform public.recompute_streak(target_user_id);
+      perform public.check_unlocks(target_user_id);
+    end if;
+  end if;
+
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id = target_user_id;
+
+  delete from public.seat_heartbeats where user_id = target_user_id;
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- 20-8. clear_seats_for_excluded_hours: 업무시간 일괄 퇴장
+-- ------------------------------------------------------------
+create or replace function public.clear_seats_for_excluded_hours()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  occupied record;
+  elapsed integer;
+  today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  if not public.is_within_excluded_hours() then
+    return;
+  end if;
+
+  for occupied in
+    select
+      s.user_id,
+      s.status_changed_at,
+      public.seat_effective_until(s.user_id, s.status_changed_at) as effective_until
+    from public.seats s
+    where s.user_id is not null and s.status_changed_at is not null
+    for update
+  loop
+    elapsed := greatest(
+      0,
+      extract(epoch from (occupied.effective_until - occupied.status_changed_at))::integer
+        - public.excluded_seconds(occupied.status_changed_at, occupied.effective_until)
+    );
+
+    if elapsed > 0 then
+      insert into public.attendance_logs (user_id, date, total_seconds)
+      values (occupied.user_id, today, elapsed)
+      on conflict (user_id, date)
+      do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+      update public.users
+      set total_study_seconds = total_study_seconds + elapsed
+      where id = occupied.user_id;
+
+      perform public.recompute_streak(occupied.user_id);
+      perform public.check_unlocks(occupied.user_id);
+    end if;
+
+    delete from public.seat_heartbeats where user_id = occupied.user_id;
+  end loop;
+
+  update public.seats
+  set user_id = null, status = null, status_changed_at = null
+  where user_id is not null;
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- 20-9. sweep_stale_seats: 하트비트를 새 테이블에서 읽습니다
+--    3분 임계값, 정산 기준 시각, elapsed 계산 모두 기존과 동일합니다.
+-- ------------------------------------------------------------
+create or replace function public.sweep_stale_seats()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  occupied record;
+  elapsed integer;
+  stale_threshold constant interval := interval '3 minutes';
+begin
+  for occupied in
+    select
+      s.user_id,
+      s.status_changed_at,
+      public.seat_effective_until(s.user_id, s.status_changed_at) as effective_until
+    from public.seats s
+    where s.user_id is not null
+      and s.status_changed_at is not null
+      and public.seat_effective_until(s.user_id, s.status_changed_at)
+          < now() - stale_threshold
+    for update
+  loop
+    elapsed := greatest(
+      0,
+      extract(epoch from (occupied.effective_until - occupied.status_changed_at))::integer
+        - public.excluded_seconds(occupied.status_changed_at, occupied.effective_until)
+    );
+
+    if elapsed > 0 then
+      insert into public.attendance_logs (user_id, date, total_seconds)
+      values (
+        occupied.user_id,
+        (occupied.effective_until at time zone 'Asia/Seoul')::date,
+        elapsed
+      )
+      on conflict (user_id, date)
+      do update set total_seconds = public.attendance_logs.total_seconds + excluded.total_seconds;
+
+      update public.users
+      set total_study_seconds = total_study_seconds + elapsed
+      where id = occupied.user_id;
+
+      perform public.recompute_streak(occupied.user_id);
+      perform public.check_unlocks(occupied.user_id);
+    end if;
+
+    update public.seats
+    set user_id = null, status = null, status_changed_at = null
+    where user_id = occupied.user_id;
+
+    delete from public.seat_heartbeats where user_id = occupied.user_id;
+  end loop;
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- 20-9b. recompute_streak: 값이 실제로 바뀔 때만 UPDATE
+--
+--    users도 supabase_realtime publication에 있습니다(333번 줄). 그리고
+--    seat-room이 users UPDATE를 구독해서, 한 건이라도 UPDATE가 나면 접속자
+--    전원이 fetchTables() + fetchRankings()를 돕니다(요청 5개).
+--
+--    그런데 이 함수는 streak_days가 그대로여도 매번 UPDATE를 날립니다.
+--    정산 한 번마다 users가 최대 3번 UPDATE되는데(total_study_seconds,
+--    streak_days, unlocked_items) 그중 하나가 대부분 무의미한 쓰기입니다.
+--    실제 스트릭이 바뀌는 건 하루에 한 번뿐인데 정산할 때마다 쓰고 있었습니다.
+--
+--    "is distinct from"으로 막으면 값이 그대로일 때 행을 건드리지 않고,
+--    WAL에도 안 남아 브로드캐스트가 발생하지 않습니다.
+--    (check_unlocks는 이미 newly_unlocked is not null 가드가 있습니다)
+-- ------------------------------------------------------------
+create or replace function public.recompute_streak(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  streak integer := 0;
+  cursor_date date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  if not exists (
+    select 1 from public.attendance_logs
+    where user_id = target_user_id and date = cursor_date and total_seconds > 0
+  ) then
+    cursor_date := cursor_date - 1;
+  end if;
+
+  while exists (
+    select 1 from public.attendance_logs
+    where user_id = target_user_id and date = cursor_date and total_seconds > 0
+  ) loop
+    streak := streak + 1;
+    cursor_date := cursor_date - 1;
+  end loop;
+
+  update public.users
+  set streak_days = streak
+  where id = target_user_id
+    and streak_days is distinct from streak;
+end;
+$$;
+
+commit;
+
+-- ------------------------------------------------------------
+-- 20-10. 실행 후 검증 쿼리 (따로 실행하세요)
+-- ------------------------------------------------------------
+
+-- (1) 새 테이블이 publication에 안 들어갔는지 확인 — 0행이 나와야 정상.
+--     1행이 나오면 이 마이그레이션이 아무 효과가 없습니다. 그 경우
+--     alter publication supabase_realtime drop table public.seat_heartbeats;
+-- select schemaname, tablename
+-- from pg_publication_tables
+-- where pubname = 'supabase_realtime' and tablename = 'seat_heartbeats';
+
+-- (2) 백필이 제대로 됐는지 — 두 숫자가 같아야 정상.
+--     다르면 즉시 아래 롤백을 실행하세요.
+-- select
+--   (select count(*) from public.seats where user_id is not null) as 착석자수,
+--   (select count(*) from public.seat_heartbeats hb
+--      join public.seats s on s.user_id = hb.user_id) as 백필된수;
+
+-- (3) 하트비트가 새 테이블로 들어오고 있는지 — 1분쯤 뒤 실행.
+--     stale_seconds가 30 안팎에서 계속 갱신되면 정상 동작 중입니다.
+-- select u.name,
+--        extract(epoch from (now() - hb.last_heartbeat_at))::int as stale_seconds
+-- from public.seat_heartbeats hb
+-- join public.users u on u.id = hb.user_id
+-- order by stale_seconds desc;
+
+-- (4) seats에 하트비트 UPDATE가 더 이상 안 일어나는지 확인.
+--     좌석에 아무 변화가 없으면 이 값이 계속 그대로여야 합니다.
+-- select max(status_changed_at) from public.seats;
+
+-- ------------------------------------------------------------
+-- 20-11. 롤백 스크립트 (문제 생겼을 때만 실행)
+--    seats.last_heartbeat_at 컬럼을 안 지우고 남겨뒀기 때문에, 새 테이블의
+--    값을 되돌려 넣은 뒤 17번 섹션의 함수 정의들을 다시 실행하면 원상복구됩니다.
+--    반드시 "값 복사 -> 함수 복원" 순서로 해야 sweep이 오작동하지 않습니다.
+-- ------------------------------------------------------------
+-- begin;
+--   update public.seats s
+--   set last_heartbeat_at = hb.last_heartbeat_at
+--   from public.seat_heartbeats hb
+--   where hb.user_id = s.user_id;
+--
+--   -- 이어서 이 파일 17번 섹션의 heartbeat_seat / sweep_stale_seats /
+--   -- sit_at_seat / leave_seat / clear_seat_for_user /
+--   -- clear_seats_for_excluded_hours 정의를 그대로 다시 실행하세요.
+-- commit;
+
+-- ============================================================
 -- 21. users 테이블을 컬럼 단위로 잠가서 랭킹 조작 차단
 --
 --    [문제]
