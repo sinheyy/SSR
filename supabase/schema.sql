@@ -2077,3 +2077,82 @@ commit;
 --   -- settle_current_seat은 definer로 둬도 무해하므로 굳이 되돌릴 필요 없음.
 --   -- 굳이 되돌리려면 710번 줄 부근의 security invoker 버전을 다시 실행하세요.
 -- commit;
+
+-- ============================================================
+-- 22. 슬랙 가입 시 이름이 겹치면 자동으로 뒤에 숫자 붙이기
+--
+--    [문제]
+--    이름은 랭킹판/좌석/관리자 화면에서 사람을 식별하는 유일한 값인데,
+--    슬랙 표시 이름이 같은 사람이 둘 있으면 가입 시점부터 똑같은 이름으로
+--    들어옵니다. 마이페이지 이름 수정에는 중복 검사를 넣었지만 가입 경로는
+--    그대로 뚫려 있었습니다.
+--
+--    users.name에 unique 제약을 거는 방법도 있지만, 그러면 이 트리거의
+--    insert가 실패하면서 auth.users insert까지 통째로 롤백되어 두 번째
+--    사람은 "로그인 자체가 안 되는" 상태가 됩니다. 그래서 제약을 거는 대신
+--    트리거가 알아서 비어있는 이름을 찾도록 했습니다.
+--
+--    [함께 고친 것]
+--    - set search_path 고정: 이 함수는 security definer인데 search_path가
+--      설정돼 있지 않아 Supabase Security Advisor가 "Function Search Path
+--      Mutable"로 경고하던 항목입니다.
+--    - 이름이 아예 없는 경우 대비: 슬랙 프로필에 name/full_name이 둘 다
+--      없으면 name이 not null이라 insert가 실패하고, 위와 같은 이유로
+--      가입이 통째로 막힙니다. 기본값을 넣어 방어합니다.
+--
+--    [주의]
+--    이 변경은 "앞으로의 가입"에만 적용됩니다. 이미 중복인 이름이 있으면
+--    그대로 남으니 아래 쿼리로 확인하고 수동으로 정리하세요.
+--
+--      select name, count(*) from public.users
+--      group by name having count(*) > 1;
+-- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  base_name text;
+  candidate text;
+  suffix integer := 1;
+begin
+  base_name := nullif(trim(coalesce(
+    new.raw_user_meta_data ->> 'name',
+    new.raw_user_meta_data ->> 'full_name'
+  )), '');
+
+  if base_name is null then
+    base_name := '이름없음';
+  end if;
+
+  candidate := base_name;
+
+  -- 이미 같은 이름이 있으면 뒤에 숫자를 붙여가며 비어있는 이름을 찾는다.
+  -- (윤신혜 -> 윤신혜2 -> 윤신혜3 ...) 마이페이지 이름 수정의 중복 처리와
+  -- 같은 규칙이다.
+  --
+  -- 상한을 두는 이유: 어떤 이유로든 루프가 끝나지 않으면 가입이 영영
+  -- 막힌다. 100까지 가도 못 찾으면 중복을 감수하고 그냥 넣는다 —
+  -- 이름이 겹치는 것보다 로그인이 안 되는 게 훨씬 나쁘다.
+  while suffix < 100 and exists (
+    select 1 from public.users where name = candidate
+  ) loop
+    suffix := suffix + 1;
+    candidate := base_name || suffix;
+  end loop;
+
+  insert into public.users (id, slack_user_id, name, email, avatar_url)
+  values (
+    new.id,
+    new.raw_user_meta_data ->> 'sub',
+    candidate,
+    new.email,
+    new.raw_user_meta_data ->> 'avatar_url'
+  );
+
+  return new;
+end;
+$$;
